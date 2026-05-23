@@ -6,9 +6,9 @@ services:
     container_name: career-postgres
     restart: always
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: toma1234
-      POSTGRES_DB: career_db
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-career_db}
     ports:
       - "5432:5432"
     volumes:
