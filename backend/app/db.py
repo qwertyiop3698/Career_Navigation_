@@ -5,7 +5,7 @@ from app.core.config import get_env
 
 DATABASE_URL = get_env(
     "DATABASE_URL",
-    "postgresql+psycopg2://admin:1234@localhost:5432/career_db",
+    "postgresql+psycopg2://admin:toma1234@localhost:5432/career_db",
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)

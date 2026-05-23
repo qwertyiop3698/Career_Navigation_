@@ -219,21 +219,6 @@ Expo Go로 실제 휴대폰에서 테스트할 경우 `EXPO_PUBLIC_API_BASE_URL`
 ```env
 EXPO_PUBLIC_API_BASE_URL=http://192.168.35.167:8000
 ```
-
-## 9. 환경변수 설정
-
-프로젝트 루트 `.env` 예시:
-
-```env
-EXPO_PUBLIC_API_BASE_URL=http://192.168.35.167:8000
-WORKNET_API_KEY=
-PUBLIC_DATA_API_KEY=공공데이터포털_서비스키
-HRDK_SERVICE_KEY=
-HRD_API_KEY=
-PUBLIC_DATA_JOB_API_TIMEOUT_SECONDS=20
-DATABASE_URL=postgresql+psycopg2://admin:1234@db:5432/career_db
-```
-
 HRD/HRDK OpenAPI URL notes:
 
 - `HRDK_*_URL` must be the actual request URL / End Point from the public data portal usage guide, not a data.go.kr detail page.
