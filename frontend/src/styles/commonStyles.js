@@ -1,0 +1,163 @@
+import { StyleSheet } from "react-native";
+
+export const colors = {
+  background: "#F7F1E8",
+  card: "#FFFDF8",
+  cardBorder: "#DED3C1",
+  green: "#17483E",
+  greenSoft: "#E5F0EA",
+  text: "#1D2722",
+  muted: "#637168",
+  danger: "#A53B2A",
+};
+
+export const commonStyles = StyleSheet.create({
+  safeArea: {
+    backgroundColor: colors.background,
+    flex: 1,
+  },
+  screen: {
+    gap: 16,
+    padding: 20,
+    paddingBottom: 112,
+  },
+  card: {
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: 24,
+    borderWidth: 1,
+    gap: 14,
+    padding: 18,
+    shadowColor: "#3A3024",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 2,
+  },
+  compactCard: {
+    borderRadius: 20,
+    gap: 12,
+    padding: 14,
+  },
+  cardTitle: {
+    color: colors.text,
+    fontSize: 19,
+    fontWeight: "900",
+  },
+  compactTitle: {
+    fontSize: 17,
+  },
+  bodyText: {
+    color: colors.muted,
+    fontSize: 15,
+    lineHeight: 23,
+  },
+  field: {
+    gap: 8,
+  },
+  label: {
+    color: "#3E4B44",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  input: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#D1C7B6",
+    borderRadius: 16,
+    borderWidth: 1,
+    color: "#18211D",
+    fontSize: 15,
+    minHeight: 50,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  compactInput: {
+    borderRadius: 14,
+    fontSize: 14,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  textArea: {
+    minHeight: 92,
+    textAlignVertical: "top",
+  },
+  primaryButton: {
+    alignItems: "center",
+    backgroundColor: colors.green,
+    borderRadius: 18,
+    minHeight: 54,
+    justifyContent: "center",
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+  },
+  compactButton: {
+    borderRadius: 16,
+    minHeight: 48,
+    paddingVertical: 12,
+  },
+  primaryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  secondaryButton: {
+    alignItems: "center",
+    backgroundColor: "#17212B",
+    borderRadius: 18,
+    minHeight: 54,
+    justifyContent: "center",
+    paddingVertical: 14,
+  },
+  secondaryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  lightButton: {
+    alignItems: "center",
+    backgroundColor: colors.greenSoft,
+    borderColor: "#C9DED4",
+    borderRadius: 18,
+    borderWidth: 1,
+    minHeight: 54,
+    justifyContent: "center",
+    paddingVertical: 14,
+  },
+  lightButtonText: {
+    color: colors.green,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  errorBox: {
+    backgroundColor: "#FFF1ED",
+    borderColor: "#F4B5A4",
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 6,
+    padding: 12,
+  },
+  errorTitle: {
+    color: colors.danger,
+    fontWeight: "900",
+  },
+  errorText: {
+    color: colors.danger,
+    lineHeight: 20,
+  },
+  chipWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  chip: {
+    backgroundColor: "#17212B",
+    borderRadius: 999,
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+});
