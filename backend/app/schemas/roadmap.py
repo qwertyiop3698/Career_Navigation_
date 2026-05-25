@@ -1,10 +1,13 @@
 from pydantic import BaseModel, Field
 
+from app.schemas.user import SkillAssessment
+
 
 class RoadmapCreateRequest(BaseModel):
     job_target: str = Field(..., examples=["AI Backend Developer"])
     experience_level: str = Field("Junior", examples=["Junior"])
     skills: list[str] = Field(default_factory=list, examples=[["Python", "SQL", "FastAPI"]])
+    skill_assessments: list[SkillAssessment] = Field(default_factory=list)
     goal_period: int = Field(12, examples=[12])
 
 
@@ -32,6 +35,18 @@ class RoadmapResponse(BaseModel):
     goal_period: int | None = None
     progress_percent: int
     is_active: bool
+    current_skills: list[str] = Field(default_factory=list)
+    skill_assessments: list[SkillAssessment] = Field(default_factory=list)
+    covered_skills: list[str] = Field(default_factory=list)
+    missing_skills: list[str] = Field(default_factory=list)
+    recommended_skills: list[str] = Field(default_factory=list)
+    readiness_score: int = 0
+    capability_score: int = 0
+    project_evidence_score: int = 0
+    application_readiness_score: int = 0
+    cycles: list[dict] = Field(default_factory=list)
+    evidence_summary: list[dict] = Field(default_factory=list)
+    evidence_note: str | None = None
     weeks: list[RoadmapWeekResponse]
 
 
@@ -47,6 +62,10 @@ class ToggleTaskResponse(BaseModel):
     progress_percent: int
     completed_count: int
     total_count: int
+    readiness_score: int = 0
+    capability_score: int = 0
+    project_evidence_score: int = 0
+    application_readiness_score: int = 0
 
 
 class RoadmapProgressResponse(BaseModel):

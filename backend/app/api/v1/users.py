@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.auth import get_optional_current_user
 from app.db import get_db
 from app.models import Skill, User, UserSkill
-from app.schemas import UserProfileCreate, UserProfileResponse
+from app.schemas import SkillAssessment, UserProfileCreate, UserProfileResponse
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 logger = logging.getLogger(__name__)
@@ -22,12 +22,13 @@ def create_user_profile(
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_optional_current_user),
 ):
-    skill_names = _normalize_skill_names(payload.skills)
-    if not skill_names:
+    assessments = _normalize_skill_assessments(payload)
+    if not assessments:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="At least one valid skill is required.",
+            detail="At least one valid skill assessment is required.",
         )
+    skill_names = [assessment.name for assessment in assessments]
 
     user = current_user or User()
     user.job_target = payload.job_target
@@ -47,7 +48,8 @@ def create_user_profile(
         )
         skills_by_name = {skill.name: skill for skill in existing_skills}
 
-        for skill_name in skill_names:
+        for assessment in assessments:
+            skill_name = assessment.name
             skill = skills_by_name.get(skill_name)
             if skill is None:
                 skill = Skill(name=skill_name)
@@ -55,7 +57,13 @@ def create_user_profile(
                 db.flush()
                 skills_by_name[skill_name] = skill
 
-            db.add(UserSkill(user_id=user.id, skill_id=skill.id))
+            db.add(
+                UserSkill(
+                    user_id=user.id,
+                    skill_id=skill.id,
+                    proficiency_level=assessment.level,
+                )
+            )
 
         db.commit()
         db.refresh(user)
@@ -72,22 +80,27 @@ def create_user_profile(
         user_id=str(user.id),
         job_target=user.job_target,
         experience_level=user.experience_level,
-        skills=skill_names,
+        skills=[assessment.name for assessment in assessments if assessment.level > 0],
+        skill_assessments=assessments,
         goal_period=user.goal_period,
         status="created",
     )
 
 
-def _normalize_skill_names(skills: list[str]) -> list[str]:
-    normalized = []
+def _normalize_skill_assessments(payload: UserProfileCreate) -> list[SkillAssessment]:
+    submitted = payload.skill_assessments or [
+        SkillAssessment(name=skill, level=3) for skill in payload.skills
+    ]
+    normalized: list[SkillAssessment] = []
     seen = set()
 
-    for skill in skills:
-        skill_name = skill.strip()
-        if not skill_name or skill_name in seen:
+    for assessment in submitted:
+        skill_name = assessment.name.strip()
+        key = skill_name.lower()
+        if not skill_name or key in seen:
             continue
-        normalized.append(skill_name)
-        seen.add(skill_name)
+        normalized.append(SkillAssessment(name=skill_name, level=assessment.level))
+        seen.add(key)
 
     return normalized
 

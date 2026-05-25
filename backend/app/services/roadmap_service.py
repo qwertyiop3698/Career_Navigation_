@@ -5,6 +5,10 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import Roadmap, RoadmapTask, RoadmapWeek, User
+from app.services.evidence_roadmap_service import (
+    build_evidence_roadmap_context,
+    build_evidence_week_template,
+)
 
 DEMO_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 DEMO_EMAIL = "demo@career.local"
@@ -190,6 +194,7 @@ def create_active_roadmap(
     job_target: str,
     experience_level: str = "Junior",
     skills: list[str] | None = None,
+    skill_assessments: list[dict] | None = None,
     goal_period: int = 12,
     user_id: uuid.UUID | None = None,
 ) -> Roadmap:
@@ -201,6 +206,12 @@ def create_active_roadmap(
         Roadmap.is_active.is_(True),
     ).update({Roadmap.is_active: False}, synchronize_session=False)
 
+    normalized_assessments = skill_assessments or [
+        {"name": skill, "level": 3} for skill in (skills or [])
+    ]
+    roadmap_context = build_evidence_roadmap_context(
+        db, normalized_job, normalized_assessments
+    )
     roadmap = Roadmap(
         user_id=owner_id,
         job_target=normalized_job,
@@ -208,12 +219,15 @@ def create_active_roadmap(
         goal_period=goal_period,
         progress_percent=0,
         is_active=True,
-        content={"input_skills": skills or []},
+        content=roadmap_context,
     )
     db.add(roadmap)
     db.flush()
 
-    for week_template in build_roadmap_template(normalized_job, skills or []):
+    week_templates = build_evidence_week_template(roadmap_context)
+    if not week_templates:
+        week_templates = build_roadmap_template(normalized_job, skills or [])
+    for week_template in week_templates:
         week = RoadmapWeek(
             roadmap_id=roadmap.id,
             week_number=week_template["week_number"],
@@ -293,6 +307,8 @@ def get_progress(db: Session, roadmap: Roadmap | None) -> tuple[int, int, int]:
 
 
 def serialize_roadmap(roadmap: Roadmap) -> dict:
+    context = roadmap.content or {}
+    scores = calculate_readiness_scores(roadmap)
     return {
         "id": roadmap.id,
         "user_id": str(roadmap.user_id),
@@ -301,6 +317,15 @@ def serialize_roadmap(roadmap: Roadmap) -> dict:
         "goal_period": roadmap.goal_period,
         "progress_percent": roadmap.progress_percent,
         "is_active": roadmap.is_active,
+        "current_skills": context.get("input_skills", []),
+        "skill_assessments": context.get("skill_assessments", []),
+        "covered_skills": context.get("covered_skills", []),
+        "missing_skills": context.get("missing_skills", []),
+        "recommended_skills": context.get("recommended_skills", []),
+        **scores,
+        "cycles": context.get("cycles", []),
+        "evidence_summary": context.get("evidence_summary", []),
+        "evidence_note": context.get("evidence_note"),
         "weeks": [
             {
                 "id": week.id,
@@ -323,6 +348,36 @@ def serialize_roadmap(roadmap: Roadmap) -> dict:
             for week in roadmap.weeks
         ],
     }
+
+
+def calculate_readiness_scores(roadmap: Roadmap) -> dict:
+    context = roadmap.content or {}
+    capability_score = min(60, max(0, int(context.get("capability_score", 0))))
+    tasks = [task for week in roadmap.weeks for task in week.tasks]
+    project_tasks = [
+        task for task in tasks if task.task_type in {"project", "portfolio"}
+    ]
+    application_tasks = [
+        task for task in tasks
+        if task.task_type in {"resume", "interview", "job_search"}
+    ]
+    project_evidence_score = _completion_score(project_tasks, 25)
+    application_readiness_score = _completion_score(application_tasks, 15)
+    return {
+        "readiness_score": (
+            capability_score + project_evidence_score + application_readiness_score
+        ),
+        "capability_score": capability_score,
+        "project_evidence_score": project_evidence_score,
+        "application_readiness_score": application_readiness_score,
+    }
+
+
+def _completion_score(tasks: list[RoadmapTask], maximum: int) -> int:
+    if not tasks:
+        return 0
+    completed = sum(1 for task in tasks if task.is_completed)
+    return round(completed / len(tasks) * maximum)
 
 
 def build_roadmap_template(job_target: str, input_skills: list[str]) -> list[dict]:

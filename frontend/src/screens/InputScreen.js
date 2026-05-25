@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -8,16 +8,62 @@ import {
   View,
 } from "react-native";
 
-import { createCareerPath, createUserProfile } from "../api/client";
+import { createCareerPath, createUserProfile, getRoleSkills } from "../api/client";
 import { useAnalysis } from "../context/AnalysisContext";
-import { commonStyles } from "../styles/commonStyles";
+import { colors, commonStyles } from "../styles/commonStyles";
+
+const JOB_ROLES = [
+  "Backend Developer",
+  "Frontend Developer",
+  "AI Backend Developer",
+  "Data Analyst",
+  "Data Engineer",
+  "Data Scientist",
+  "Builder",
+];
+
+const CHECKLIST_CANDIDATES = {
+  "Backend Developer": ["Java", "Python", "SQL", "Docker", "AWS", "PostgreSQL"],
+  "Frontend Developer": ["React", "TypeScript", "JavaScript", "Node.js", "AWS", "Docker"],
+  "AI Backend Developer": ["Python", "LLM", "RAG", "Embedding", "Docker", "AWS"],
+  "Data Analyst": ["SQL", "Python", "PostgreSQL", "Machine Learning", "AWS"],
+  "Data Engineer": ["SQL", "Python", "Airflow", "Spark", "Kafka", "AWS"],
+  "Data Scientist": ["Python", "SQL", "Machine Learning", "PyTorch", "Deep Learning", "Spark"],
+  Builder: ["Python", "JavaScript", "SQL", "AWS", "Docker", "TypeScript"],
+};
+
+const LEVEL_LABELS = [
+  "경험 없음",
+  "기본 사용",
+  "작은 문제 해결",
+  "프로젝트 적용",
+  "품질까지 적용",
+  "배포/설명 가능",
+];
+
+const SKILL_ACTIONS = {
+  python: [
+    "아직 직접 사용한 적이 없습니다.",
+    "print, 변수, 조건문을 작성할 수 있습니다.",
+    "함수와 반복문으로 작은 문제를 해결할 수 있습니다.",
+    "프로젝트 기능에 Python 코드를 적용할 수 있습니다.",
+    "예외 처리와 테스트를 포함해 작성할 수 있습니다.",
+    "배포된 결과물에서 사용했고 설계 이유를 설명할 수 있습니다.",
+  ],
+  sql: [
+    "아직 직접 사용한 적이 없습니다.",
+    "SELECT와 기본 필터를 작성할 수 있습니다.",
+    "JOIN과 GROUP BY로 필요한 결과를 만들 수 있습니다.",
+    "프로젝트 데이터 조회나 분석에 적용할 수 있습니다.",
+    "성능과 데이터 정확성을 확인하며 작성할 수 있습니다.",
+    "운영 데이터 구조와 쿼리 선택을 설명할 수 있습니다.",
+  ],
+};
 
 const initialForm = {
   job_target: "AI Backend Developer",
   experience_level: "Junior",
-  skills: "Python, SQL, FastAPI",
   goal_period: "12",
-  target_skill: "RAG",
 };
 
 export default function InputScreen({
@@ -26,21 +72,50 @@ export default function InputScreen({
   navigation,
 }) {
   const [form, setForm] = useState(initialForm);
+  const [skillAssessments, setSkillAssessments] = useState([]);
+  const [isSkillsLoading, setIsSkillsLoading] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { setActiveRoadmap, setAnalysisResult, setLastSkills } = useAnalysis();
 
-  const skillList = useMemo(
-    () =>
-      form.skills
-        .split(",")
-        .map((skill) => skill.trim())
-        .filter(Boolean),
-    [form.skills],
-  );
+  useEffect(() => {
+    let mounted = true;
+    setIsSkillsLoading(true);
+    getRoleSkills(form.job_target, 40)
+      .then((rows) => {
+        if (!mounted) return;
+        const evidenced = new Set(
+          rows
+            .filter((row) => ["strong", "moderate"].includes(row.evidence_level))
+            .map((row) => row.skill.toLowerCase()),
+        );
+        const candidates = CHECKLIST_CANDIDATES[form.job_target] ?? [];
+        const names = candidates.filter((skill) => evidenced.has(skill.toLowerCase()));
+        setSkillAssessments(toAssessments(names.length ? names : candidates));
+      })
+      .catch(() => {
+        if (mounted) {
+          setSkillAssessments(toAssessments(CHECKLIST_CANDIDATES[form.job_target] ?? []));
+        }
+      })
+      .finally(() => {
+        if (mounted) setIsSkillsLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [form.job_target]);
 
   const updateForm = (key, value) => {
     setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const setSkillLevel = (name, level) => {
+    setSkillAssessments((current) =>
+      current.map((assessment) =>
+        assessment.name === name ? { ...assessment, level } : assessment,
+      ),
+    );
   };
 
   const runAnalysis = async () => {
@@ -51,82 +126,52 @@ export default function InputScreen({
       const profilePayload = {
         job_target: form.job_target,
         experience_level: form.experience_level,
-        skills: skillList,
+        skill_assessments: skillAssessments,
         goal_period: Number(form.goal_period) || 12,
       };
-
-      console.log("[API] POST /api/v1/users/profile", profilePayload);
       const profile = await createUserProfile(profilePayload);
-      console.log("[API] /api/v1/users/profile response", profile);
-
-      const careerPathPayload = {
+      const careerPath = await createCareerPath({
         job_role: form.job_target,
-        target_skill: form.target_skill,
-      };
-
-      console.log("[API] POST /api/v1/agent/career-path");
-      console.log("[API] /api/v1/agent/career-path payload", careerPathPayload);
-      const careerPath = await createCareerPath(careerPathPayload);
-      console.log("[API] /api/v1/agent/career-path response", careerPath);
-
-      const currentSkills = skillList;
-      const recommendedSkills =
-        careerPath.recommended_skills ??
-        careerPath.recommended_learning ??
-        [];
-      const missingSkills =
-        careerPath.missing_skills ?? recommendedSkills.filter((skill) => !currentSkills.includes(skill));
-      const recommendedLearning =
-        careerPath.recommended_learning ??
-        careerPath.roadmap?.flatMap((step) => step.items ?? []) ??
-        recommendedSkills;
+        target_skill: skillAssessments[0]?.name ?? "Core skill",
+        skill_assessments: skillAssessments,
+      });
+      const currentSkills = profile.skills ?? [];
+      const recommendedSkills = careerPath.recommended_skills ?? [];
       const activeRoadmapFromCareerPath = careerPath.roadmap_12_weeks?.length
         ? {
             id: careerPath.roadmap_id,
-            job_target: careerPath.target_role ?? careerPath.future_job ?? form.job_target,
+            job_target: careerPath.future_job ?? form.job_target,
             progress_percent: careerPath.progress_percent ?? 0,
+            readiness_score: careerPath.readiness_score ?? 0,
+            capability_score: careerPath.capability_score ?? 0,
+            project_evidence_score: careerPath.project_evidence_score ?? 0,
+            application_readiness_score: careerPath.application_readiness_score ?? 0,
+            cycles: careerPath.cycles ?? [],
+            evidence_summary: careerPath.evidence_summary ?? [],
             weeks: careerPath.roadmap_12_weeks,
           }
         : null;
 
-      setLastSkills(skillList);
+      setLastSkills(currentSkills);
       setActiveRoadmap(activeRoadmapFromCareerPath);
       setAnalysisResult({
         ...careerPath,
-        target_role: careerPath.target_role ?? careerPath.future_job ?? form.job_target,
-        fit_score:
-          careerPath.fit_score ??
-          Math.round((careerPath.demand_probability ?? 0) * 100),
-        current_skills: careerPath.current_skills ?? currentSkills,
-        missing_skills: missingSkills,
-        recommended_learning: recommendedLearning,
-        recommended_projects:
-          careerPath.recommended_projects ??
-          careerPath.roadmap?.map((step) => step.title).filter(Boolean) ??
-          [],
-        summary:
-          careerPath.summary ??
-          `${careerPath.future_job ?? form.job_target} needs ${form.target_skill} focused learning and project preparation.`,
+        target_role: careerPath.future_job ?? form.job_target,
+        current_skills: currentSkills,
+        skill_assessments: profile.skill_assessments ?? skillAssessments,
+        missing_skills: careerPath.missing_skills ?? recommendedSkills,
+        recommended_learning: recommendedSkills,
         job_target: careerPath.future_job ?? form.job_target,
         experience_level: form.experience_level,
         goal_period: Number(form.goal_period) || 12,
-        target_skill: form.target_skill,
       });
       navigation.navigate("Result");
     } catch (requestError) {
-      console.error("[Analysis] request failed", {
-        data: requestError.response?.data,
-        status: requestError.response?.status,
-        message: requestError.message,
-      });
-
       const responseData = requestError.response?.data;
       const detail =
         typeof responseData?.detail === "string"
           ? responseData.detail
-          : requestError.code === "ECONNABORTED"
-            ? "API 서버 응답 시간이 초과되었습니다. 백엔드 주소와 실행 상태를 확인해주세요."
-            : JSON.stringify(responseData ?? requestError.message, null, 2);
+          : "분석 요청을 처리하지 못했습니다. 서버 연결 상태를 확인해 주세요.";
       setError(detail);
     } finally {
       setIsLoading(false);
@@ -147,35 +192,27 @@ export default function InputScreen({
     >
       <View style={[commonStyles.card, isSmallScreen && commonStyles.compactCard]}>
         <Text style={[commonStyles.cardTitle, isSmallScreen && commonStyles.compactTitle]}>
-          새로 분석하기
+          취업 준비 분석
         </Text>
-        <Field
-          label="목표 직무"
-          value={form.job_target}
-          onChangeText={(value) => updateForm("job_target", value)}
-          placeholder="AI Backend Developer"
-          isSmallScreen={isSmallScreen}
-        />
-        <Field
-          label="관심 기술"
-          value={form.target_skill}
-          onChangeText={(value) => updateForm("target_skill", value)}
-          placeholder="RAG"
-          isSmallScreen={isSmallScreen}
-        />
+        <Text style={commonStyles.label}>목표 직무</Text>
+        <View style={styles.roleWrap}>
+          {JOB_ROLES.map((role) => (
+            <Pressable
+              key={role}
+              onPress={() => updateForm("job_target", role)}
+              style={[styles.roleButton, form.job_target === role && styles.selectedRole]}
+            >
+              <Text style={[styles.roleText, form.job_target === role && styles.selectedRoleText]}>
+                {role}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
         <Field
           label="경험 수준"
           value={form.experience_level}
           onChangeText={(value) => updateForm("experience_level", value)}
           placeholder="Junior"
-          isSmallScreen={isSmallScreen}
-        />
-        <Field
-          label="보유 기술"
-          value={form.skills}
-          onChangeText={(value) => updateForm("skills", value)}
-          placeholder="Python, SQL, FastAPI"
-          multiline
           isSmallScreen={isSmallScreen}
         />
         <Field
@@ -186,48 +223,172 @@ export default function InputScreen({
           placeholder="12"
           isSmallScreen={isSmallScreen}
         />
+      </View>
 
-        <Pressable
-          disabled={isLoading}
-          style={[
-            commonStyles.primaryButton,
-            isSmallScreen && commonStyles.compactButton,
-            isLoading && { opacity: 0.65 },
-          ]}
-          onPress={runAnalysis}
-        >
-          {isLoading ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={commonStyles.primaryButtonText}>분석 실행</Text>
-          )}
-        </Pressable>
-
-        {!!error && (
-          <View style={commonStyles.errorBox}>
-            <Text style={commonStyles.errorTitle}>오류가 발생했습니다</Text>
-            <Text style={commonStyles.errorText}>{error}</Text>
-          </View>
+      <View style={[commonStyles.card, isSmallScreen && commonStyles.compactCard]}>
+        <Text style={[commonStyles.cardTitle, isSmallScreen && commonStyles.compactTitle]}>
+          기술 수행 체크리스트
+        </Text>
+        <Text style={commonStyles.bodyText}>
+          현재 직접 수행할 수 있는 수준을 선택해 주세요. 이 점수는 전체 기준선 중 최대 60점만 반영됩니다.
+        </Text>
+        {isSkillsLoading ? (
+          <ActivityIndicator color={colors.green} />
+        ) : (
+          skillAssessments.map((assessment) => (
+            <SkillChecklist
+              assessment={assessment}
+              key={assessment.name}
+              onChange={(level) => setSkillLevel(assessment.name, level)}
+            />
+          ))
         )}
       </View>
+
+      <Pressable
+        disabled={isLoading || isSkillsLoading}
+        style={[
+          commonStyles.primaryButton,
+          isSmallScreen && commonStyles.compactButton,
+          (isLoading || isSkillsLoading) && { opacity: 0.65 },
+        ]}
+        onPress={runAnalysis}
+      >
+        {isLoading ? (
+          <ActivityIndicator color="#FFFFFF" />
+        ) : (
+          <Text style={commonStyles.primaryButtonText}>분석 실행</Text>
+        )}
+      </Pressable>
+
+      {!!error && (
+        <View style={commonStyles.errorBox}>
+          <Text style={commonStyles.errorTitle}>오류가 발생했습니다</Text>
+          <Text style={commonStyles.errorText}>{error}</Text>
+        </View>
+      )}
     </ScrollView>
   );
 }
 
-function Field({ isSmallScreen, label, multiline = false, ...props }) {
+function SkillChecklist({ assessment, onChange }) {
+  const actions = SKILL_ACTIONS[assessment.name.toLowerCase()];
+  const description =
+    actions?.[assessment.level] ??
+    `${assessment.name}: ${LEVEL_LABELS[assessment.level]} 수준으로 수행할 수 있습니다.`;
+
+  return (
+    <View style={styles.skillBlock}>
+      <Text style={styles.skillTitle}>{assessment.name}</Text>
+      <Text style={styles.skillDescription}>{description}</Text>
+      <View style={styles.levelRow}>
+        {LEVEL_LABELS.map((label, level) => (
+          <Pressable
+            accessibilityLabel={`${assessment.name} ${label}`}
+            key={`${assessment.name}-${level}`}
+            onPress={() => onChange(level)}
+            style={[styles.levelButton, assessment.level === level && styles.selectedLevel]}
+          >
+            <Text style={[styles.levelNumber, assessment.level === level && styles.selectedLevelText]}>
+              {level}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      <Text style={styles.levelCaption}>{LEVEL_LABELS[assessment.level]}</Text>
+    </View>
+  );
+}
+
+function Field({ isSmallScreen, label, ...props }) {
   return (
     <View style={commonStyles.field}>
       <Text style={commonStyles.label}>{label}</Text>
       <TextInput
-        multiline={multiline}
         placeholderTextColor="#8D948D"
-        style={[
-          commonStyles.input,
-          isSmallScreen && commonStyles.compactInput,
-          multiline && commonStyles.textArea,
-        ]}
+        style={[commonStyles.input, isSmallScreen && commonStyles.compactInput]}
         {...props}
       />
     </View>
   );
 }
+
+function toAssessments(skills = []) {
+  return skills.map((name) => ({ name, level: 0 }));
+}
+
+const styles = {
+  roleWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  roleButton: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#D1C7B6",
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  selectedRole: {
+    backgroundColor: colors.green,
+    borderColor: colors.green,
+  },
+  roleText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  selectedRoleText: {
+    color: "#FFFFFF",
+  },
+  skillBlock: {
+    borderColor: "#D8D1C5",
+    borderTopWidth: 1,
+    gap: 8,
+    paddingTop: 12,
+  },
+  skillTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  skillDescription: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    minHeight: 38,
+  },
+  levelRow: {
+    flexDirection: "row",
+    gap: 7,
+  },
+  levelButton: {
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderColor: "#D1C7B6",
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    height: 38,
+    justifyContent: "center",
+  },
+  selectedLevel: {
+    backgroundColor: colors.green,
+    borderColor: colors.green,
+  },
+  levelNumber: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  selectedLevelText: {
+    color: "#FFFFFF",
+  },
+  levelCaption: {
+    color: colors.green,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+};

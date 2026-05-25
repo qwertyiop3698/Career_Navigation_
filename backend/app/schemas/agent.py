@@ -7,6 +7,7 @@ class CareerPathRequest(BaseModel):
     user_id: UUID | None = Field(None, examples=["6f4f312e-6d74-4e03-aecd-29e8ee4d6832"])
     job_role: str = Field(..., examples=["AI Backend Developer"])
     target_skill: str = Field(..., examples=["RAG"])
+    skill_assessments: list[dict] = Field(default_factory=list)
 
 
 class RoadmapStep(BaseModel):
@@ -47,3 +48,15 @@ class CareerPathResponse(BaseModel):
     roadmap_id: int | None = None
     progress_percent: int = 0
     roadmap_12_weeks: list[CareerPathRoadmapWeek] = []
+    current_skills: list[str] = Field(default_factory=list)
+    skill_assessments: list[dict] = Field(default_factory=list)
+    covered_skills: list[str] = Field(default_factory=list)
+    missing_skills: list[str] = Field(default_factory=list)
+    recommended_projects: list[str] = Field(default_factory=list)
+    evidence_summary: list[dict] = Field(default_factory=list)
+    cycles: list[dict] = Field(default_factory=list)
+    summary: str | None = None
+    readiness_score: int = 0
+    capability_score: int = 0
+    project_evidence_score: int = 0
+    application_readiness_score: int = 0

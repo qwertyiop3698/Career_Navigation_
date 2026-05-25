@@ -157,6 +157,10 @@ function updateTaskInRoadmap(roadmap, result) {
   return {
     ...roadmap,
     progress_percent: result.progress_percent,
+    readiness_score: result.readiness_score,
+    capability_score: result.capability_score,
+    project_evidence_score: result.project_evidence_score,
+    application_readiness_score: result.application_readiness_score,
     weeks: roadmap.weeks.map((week) => ({
       ...week,
       tasks: week.tasks.map((task) =>

@@ -19,3 +19,32 @@ class SkillTrendResponse(BaseModel):
 
 class SkillTrendCreateResponse(SkillTrendResponse):
     status: str
+
+
+class JobRoleSkillEvidenceResponse(BaseModel):
+    job_role_category: str
+    skill: str
+    role_posting_count: int
+    role_company_count: int
+    keyword_posting_count: int
+    model_posting_count: int
+    low_confidence_model_count: int
+    evidence_company_count: int
+    weighted_posting_score: float
+    demand_share: float
+    company_coverage: float
+    market_score: float
+    evidence_level: str
+    evidence_basis: str
+
+
+class JobRoleMarketHistoryResponse(BaseModel):
+    source: str
+    country: str
+    job_role_category: str
+    query_term: str
+    metric: str
+    period_month: str
+    value: float
+    granularity: str
+    limitation_note: str | None = None

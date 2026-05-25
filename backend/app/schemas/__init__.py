@@ -25,11 +25,13 @@ from app.schemas.roadmap import (
     ToggleTaskResponse,
 )
 from app.schemas.trend import (
+    JobRoleMarketHistoryResponse,
+    JobRoleSkillEvidenceResponse,
     SkillTrendCreate,
     SkillTrendCreateResponse,
     SkillTrendResponse,
 )
-from app.schemas.user import UserProfileCreate, UserProfileResponse
+from app.schemas.user import SkillAssessment, UserProfileCreate, UserProfileResponse
 
 __all__ = [
     "CareerPathRequest",
@@ -57,6 +59,9 @@ __all__ = [
     "SkillTrendCreate",
     "SkillTrendCreateResponse",
     "SkillTrendResponse",
+    "JobRoleSkillEvidenceResponse",
+    "JobRoleMarketHistoryResponse",
     "UserProfileCreate",
     "UserProfileResponse",
+    "SkillAssessment",
 ]

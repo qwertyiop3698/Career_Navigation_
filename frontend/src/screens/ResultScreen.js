@@ -3,8 +3,6 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useAnalysis } from "../context/AnalysisContext";
 import { colors, commonStyles } from "../styles/commonStyles";
 
-const TEST_FIT_SCORE = 70;
-
 export default function ResultScreen({
   contentBottomPadding = 112,
   isSmallScreen = false,
@@ -58,7 +56,17 @@ export default function ResultScreen({
     ),
     extractProjectTasks(activeRoadmap),
   );
-  const fitScore = getDisplayFitScore(analysisResult, hasRoadmap);
+  const evidenceSummary =
+    analysisResult?.evidence_summary ?? activeRoadmap?.evidence_summary ?? [];
+  const cycles = analysisResult?.cycles ?? activeRoadmap?.cycles ?? [];
+  const fitScore = getDisplayFitScore(analysisResult, activeRoadmap, hasRoadmap);
+  const capabilityScore = activeRoadmap?.capability_score ?? analysisResult?.capability_score ?? 0;
+  const projectEvidenceScore =
+    activeRoadmap?.project_evidence_score ?? analysisResult?.project_evidence_score ?? 0;
+  const applicationReadinessScore =
+    activeRoadmap?.application_readiness_score ??
+    analysisResult?.application_readiness_score ??
+    0;
   const summary =
     translateSummary(analysisResult?.summary ?? analysisResult?.impact) ??
     `${targetRole} 준비를 위한 분석이 완료되었습니다. 보완할 기술과 주차별 로드맵을 확인해보세요.`;
@@ -67,7 +75,7 @@ export default function ResultScreen({
   return (
     <ScrollView contentContainerStyle={screenPadding(contentBottomPadding, isSmallScreen)}>
       <View style={[commonStyles.card, styles.heroCard]}>
-        <Text style={styles.heroLabel}>목표 직무 적합도</Text>
+        <Text style={styles.heroLabel}>지원 준비 기준선</Text>
         <Text style={[styles.heroTitle, { fontSize: isSmallScreen ? 22 : 25 }]}>
           {targetRole}
         </Text>
@@ -78,7 +86,18 @@ export default function ResultScreen({
       </View>
 
       <FieldCard title="목표 직무" value={targetRole} isSmallScreen={isSmallScreen} />
-      <FieldCard title="적합도" value={`${fitScore}%`} isSmallScreen={isSmallScreen} />
+      <FieldCard title="지원 준비 기준선" value={`${fitScore}%`} isSmallScreen={isSmallScreen} />
+      <View style={[commonStyles.card, isSmallScreen && commonStyles.compactCard]}>
+        <Text style={[commonStyles.cardTitle, isSmallScreen && commonStyles.compactTitle]}>
+          기준선 구성
+        </Text>
+        <ScoreRow label="기술 수행 체크리스트" score={capabilityScore} maximum={60} />
+        <ScoreRow label="프로젝트 증명도" score={projectEvidenceScore} maximum={25} />
+        <ScoreRow label="지원 준비도" score={applicationReadinessScore} maximum={15} />
+        <Text style={commonStyles.bodyText}>
+          체크리스트만으로 전체 점수가 결정되지 않으며, 결과물과 지원 준비 완료 여부가 함께 반영됩니다.
+        </Text>
+      </View>
       <ListCard title="현재 보유 기술" items={currentSkills} isSmallScreen={isSmallScreen} />
       <ListCard title="보완할 기술" items={missingSkills} isSmallScreen={isSmallScreen} />
       <ListCard title="추천 학습" items={recommendedLearning} isSmallScreen={isSmallScreen} />
@@ -89,6 +108,36 @@ export default function ResultScreen({
         chipStyle={styles.projectChip}
         chipTextStyle={styles.projectChipText}
       />
+      <View style={[commonStyles.card, isSmallScreen && commonStyles.compactCard]}>
+        <Text style={[commonStyles.cardTitle, isSmallScreen && commonStyles.compactTitle]}>
+          추천 근거
+        </Text>
+        {evidenceSummary.length ? (
+          evidenceSummary.map((evidence) => (
+            <Text key={evidence.skill} style={commonStyles.bodyText}>
+              {evidence.skill}: {evidence.evidence_company_count}개 회사, 직접 확인 공고{" "}
+              {evidence.keyword_posting_count}건 ({evidence.evidence_level})
+            </Text>
+          ))
+        ) : (
+          <Text style={commonStyles.bodyText}>확인 가능한 시장 근거가 아직 부족합니다.</Text>
+        )}
+      </View>
+      <View style={[commonStyles.card, isSmallScreen && commonStyles.compactCard]}>
+        <Text style={[commonStyles.cardTitle, isSmallScreen && commonStyles.compactTitle]}>
+          12주 프로젝트 구성
+        </Text>
+        {cycles.map((cycle, index) => (
+          <View key={`${cycle.title}-${index}`} style={{ gap: 4, marginBottom: 10 }}>
+            <Text style={styles.cycleTitle}>
+              {index + 1}사이클: {cycle.title}
+            </Text>
+            <Text style={commonStyles.bodyText}>{cycle.project}</Text>
+            <Text style={commonStyles.bodyText}>집중 역량: {(cycle.skills ?? []).join(", ")}</Text>
+            <Text style={styles.signalText}>실무 신호: {cycle.signal}</Text>
+          </View>
+        ))}
+      </View>
       <FieldCard title="요약" value={summary} isSmallScreen={isSmallScreen} />
 
       <View style={[commonStyles.card, isSmallScreen && commonStyles.compactCard]}>
@@ -142,8 +191,23 @@ function ListCard({ title, items, isSmallScreen, chipStyle, chipTextStyle }) {
   );
 }
 
-function getDisplayFitScore(analysisResult, hasRoadmap) {
-  return TEST_FIT_SCORE;
+function ScoreRow({ label, score, maximum }) {
+  return (
+    <View style={styles.scoreRow}>
+      <Text style={styles.scoreLabel}>{label}</Text>
+      <Text style={styles.scoreValue}>{score} / {maximum}</Text>
+    </View>
+  );
+}
+
+function getDisplayFitScore(analysisResult, activeRoadmap, hasRoadmap) {
+  if (typeof activeRoadmap?.readiness_score === "number") {
+    return Math.round(activeRoadmap.readiness_score);
+  }
+  if (typeof analysisResult?.readiness_score === "number") {
+    return Math.round(analysisResult.readiness_score);
+  }
+  return getBaseFitScore(analysisResult, hasRoadmap);
 }
 
 function getBaseFitScore(analysisResult, hasRoadmap) {
@@ -293,5 +357,31 @@ const styles = {
   },
   projectChipText: {
     color: colors.green,
+  },
+  cycleTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  signalText: {
+    color: colors.green,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 19,
+  },
+  scoreRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  scoreLabel: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  scoreValue: {
+    color: colors.green,
+    fontSize: 15,
+    fontWeight: "900",
   },
 };

@@ -38,6 +38,10 @@ def create_roadmap(
             job_target=payload.job_target,
             experience_level=payload.experience_level,
             skills=payload.skills,
+            skill_assessments=[
+                {"name": assessment.name, "level": assessment.level}
+                for assessment in payload.skill_assessments
+            ],
             goal_period=payload.goal_period,
         )
         db.commit()
@@ -72,6 +76,7 @@ def toggle_roadmap_task(
             current_user.id if current_user is not None else None,
         )
         db.commit()
+        scores = serialize_roadmap(roadmap)
         return {
             "roadmap_id": roadmap.id,
             "task_id": task.id,
@@ -79,6 +84,10 @@ def toggle_roadmap_task(
             "progress_percent": roadmap.progress_percent,
             "completed_count": completed_count,
             "total_count": total_count,
+            "readiness_score": scores["readiness_score"],
+            "capability_score": scores["capability_score"],
+            "project_evidence_score": scores["project_evidence_score"],
+            "application_readiness_score": scores["application_readiness_score"],
         }
     except Exception:
         db.rollback()

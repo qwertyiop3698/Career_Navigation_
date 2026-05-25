@@ -56,6 +56,13 @@ export async function createCareerPath(payload) {
   return response.data;
 }
 
+export async function getRoleSkills(jobRole, limit = 6) {
+  const response = await apiClient.get('/api/v1/trends/role-skills', {
+    params: { job_role_category: jobRole, limit },
+  });
+  return response.data;
+}
+
 export async function createRoadmap(payload) {
   const response = await apiClient.post('/api/v1/roadmaps', payload);
   return response.data;

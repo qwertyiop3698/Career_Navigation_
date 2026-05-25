@@ -42,6 +42,9 @@ class UserSkill(Base):
         ForeignKey("skills.id", ondelete="CASCADE"),
         nullable=False,
     )
+    proficiency_level = Column(Integer, nullable=False, default=0)
+    evidence_note = Column(Text)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     user = relationship("User", back_populates="skills")
     skill = relationship("Skill", back_populates="users")

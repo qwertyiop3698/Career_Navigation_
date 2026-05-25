@@ -7,14 +7,11 @@ from app.models import User
 from app.schemas import (
     CareerPathRequest,
     CareerPathResponse,
-    EvidenceDocument,
     RoadmapStep,
 )
-from app.services.agent_service import AgentCareerService
 from app.services.roadmap_service import create_active_roadmap, serialize_roadmap
 
 router = APIRouter(prefix="/api/v1/agent", tags=["agent"])
-agent_service = AgentCareerService()
 
 
 @router.post("/career-path", response_model=CareerPathResponse)
@@ -34,18 +31,30 @@ def create_career_path(
             )
 
     try:
-        result = agent_service.create_career_path(
-            db=db,
-            user_id=effective_user_id,
-            job_role=payload.job_role,
-            target_skill=payload.target_skill,
+        stored_assessments = (
+            [
+                {
+                    "name": user_skill.skill.name,
+                    "level": user_skill.proficiency_level or 0,
+                }
+                for user_skill in user.skills
+            ]
+            if effective_user_id is not None
+            else []
         )
+        skill_assessments = payload.skill_assessments or stored_assessments
+        current_skills = [
+            assessment["name"]
+            for assessment in skill_assessments
+            if assessment["level"] > 0
+        ]
         active_roadmap = create_active_roadmap(
             db=db,
             user_id=effective_user_id,
             job_target=payload.job_role,
             experience_level="Junior",
-            skills=[payload.target_skill],
+            skills=current_skills,
+            skill_assessments=skill_assessments,
             goal_period=12,
         )
         serialized_roadmap = serialize_roadmap(active_roadmap)
@@ -55,27 +64,37 @@ def create_career_path(
         raise
 
     return CareerPathResponse(
-        future_job=result.future_job,
-        demand_probability=result.demand_probability,
-        impact=result.impact,
-        recommended_skills=result.recommended_skills,
+        future_job=serialized_roadmap["job_target"],
+        demand_probability=0.0,
+        impact="취업 결과 예측이 아니라 현재 공고 근거를 활용한 지원 준비 로드맵입니다.",
+        recommended_skills=serialized_roadmap["recommended_skills"],
         roadmap=[
             RoadmapStep(
-                step=step["step"],
-                title=step["title"],
-                items=step["items"],
+                step=index,
+                title=cycle["title"],
+                items=cycle["skills"],
             )
-            for step in result.roadmap
+            for index, cycle in enumerate(serialized_roadmap["cycles"], start=1)
         ],
-        evidence_documents=[
-            EvidenceDocument(
-                content=document["content"],
-                source=document["source"],
-                similarity_score=document["similarity_score"],
-            )
-            for document in result.evidence_documents
-        ],
+        evidence_documents=[],
         roadmap_id=serialized_roadmap["id"],
         progress_percent=serialized_roadmap["progress_percent"],
         roadmap_12_weeks=serialized_roadmap["weeks"],
+        current_skills=serialized_roadmap["current_skills"],
+        skill_assessments=serialized_roadmap["skill_assessments"],
+        covered_skills=serialized_roadmap["covered_skills"],
+        missing_skills=serialized_roadmap["missing_skills"],
+        recommended_projects=[
+            cycle["project"] for cycle in serialized_roadmap["cycles"]
+        ],
+        evidence_summary=serialized_roadmap["evidence_summary"],
+        cycles=serialized_roadmap["cycles"],
+        readiness_score=serialized_roadmap["readiness_score"],
+        capability_score=serialized_roadmap["capability_score"],
+        project_evidence_score=serialized_roadmap["project_evidence_score"],
+        application_readiness_score=serialized_roadmap["application_readiness_score"],
+        summary=(
+            "현재 여러 회사의 공고에서 반복되는 부족 역량을 우선 선정하고, "
+            "두 개의 실무 프로젝트로 묶은 12주 준비 계획입니다."
+        ),
     )
