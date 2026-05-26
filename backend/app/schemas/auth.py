@@ -18,3 +18,4 @@ class AuthResponse(BaseModel):
     user_id: str
     email: str
     nickname: str | None = None
+    github_url: str | None = None

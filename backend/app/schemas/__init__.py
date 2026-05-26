@@ -8,6 +8,12 @@ from app.schemas.agent import (
 )
 from app.schemas.job import JobCreate, JobResponse
 from app.schemas.model import ModelPredictRequest, ModelPredictResponse
+from app.schemas.project import (
+    ProjectEvaluationResponse,
+    ProjectSubmissionCreate,
+    ProjectSubmissionResponse,
+    ProjectSubmissionResult,
+)
 from app.schemas.rag import (
     DocumentCreate,
     DocumentCreateResponse,
@@ -17,8 +23,10 @@ from app.schemas.rag import (
 )
 from app.schemas.roadmap import (
     ActiveRoadmapResponse,
+    CertificationBetaOptionResponse,
     RoadmapCreateRequest,
     RoadmapProgressResponse,
+    RoadmapReassessmentRequest,
     RoadmapResponse,
     RoadmapTaskResponse,
     RoadmapWeekResponse,
@@ -31,7 +39,13 @@ from app.schemas.trend import (
     SkillTrendCreateResponse,
     SkillTrendResponse,
 )
-from app.schemas.user import SkillAssessment, UserProfileCreate, UserProfileResponse
+from app.schemas.user import (
+    GithubProfileResponse,
+    GithubProfileUpdate,
+    SkillAssessment,
+    UserProfileCreate,
+    UserProfileResponse,
+)
 
 __all__ = [
     "CareerPathRequest",
@@ -43,6 +57,10 @@ __all__ = [
     "JobResponse",
     "ModelPredictRequest",
     "ModelPredictResponse",
+    "ProjectEvaluationResponse",
+    "ProjectSubmissionCreate",
+    "ProjectSubmissionResponse",
+    "ProjectSubmissionResult",
     "DocumentCreate",
     "DocumentCreateResponse",
     "RagQueryRequest",
@@ -50,8 +68,10 @@ __all__ = [
     "RagQueryResult",
     "RoadmapStep",
     "ActiveRoadmapResponse",
+    "CertificationBetaOptionResponse",
     "RoadmapCreateRequest",
     "RoadmapProgressResponse",
+    "RoadmapReassessmentRequest",
     "RoadmapResponse",
     "RoadmapTaskResponse",
     "RoadmapWeekResponse",
@@ -64,4 +84,6 @@ __all__ = [
     "UserProfileCreate",
     "UserProfileResponse",
     "SkillAssessment",
+    "GithubProfileUpdate",
+    "GithubProfileResponse",
 ]

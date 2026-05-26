@@ -96,6 +96,7 @@ def build_auth_response(user: User) -> AuthResponse:
         user_id=str(user.id),
         email=user.email,
         nickname=user.nickname,
+        github_url=user.github_url,
     )
 
 

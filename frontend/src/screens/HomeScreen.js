@@ -106,6 +106,12 @@ export default function HomeScreen({
           </Pressable>
           <Pressable
             style={[commonStyles.lightButton, isSmallScreen && commonStyles.compactButton]}
+            onPress={() => navigation.navigate("Assignment")}
+          >
+            <Text style={commonStyles.lightButtonText}>과제 제출 및 평가</Text>
+          </Pressable>
+          <Pressable
+            style={[commonStyles.lightButton, isSmallScreen && commonStyles.compactButton]}
             onPress={() => navigation.navigate("Input")}
           >
             <Text style={commonStyles.lightButtonText}>새로 분석하기</Text>

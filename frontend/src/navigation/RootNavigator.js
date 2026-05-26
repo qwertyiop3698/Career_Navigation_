@@ -3,8 +3,9 @@ import { NavigationContainer } from "@react-navigation/native";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
-import { setAuthToken } from "../api/client";
+import { getMe, setAuthToken } from "../api/client";
 import { AUTH_ENABLED } from "../config";
+import { useAnalysis } from "../context/AnalysisContext";
 import AppNavigator from "./AppNavigator";
 import AuthNavigator from "./AuthNavigator";
 import { AuthContext } from "./AuthContext";
@@ -12,6 +13,7 @@ import { AuthContext } from "./AuthContext";
 const TOKEN_KEY = "access_token";
 
 export default function RootNavigator() {
+  const { resetAnalysis } = useAnalysis();
   const [isLoading, setIsLoading] = useState(true);
   const [token, setToken] = useState(null);
 
@@ -25,18 +27,32 @@ export default function RootNavigator() {
       }
 
       const storedToken = await AsyncStorage.getItem(TOKEN_KEY);
-      setAuthToken(storedToken);
-      setToken(storedToken);
+      if (!storedToken) {
+        setToken(null);
+        setIsLoading(false);
+        return;
+      }
+      try {
+        setAuthToken(storedToken);
+        await getMe();
+        setToken(storedToken);
+      } catch {
+        await AsyncStorage.removeItem(TOKEN_KEY);
+        setAuthToken(null);
+        resetAnalysis();
+        setToken(null);
+      }
       setIsLoading(false);
     }
 
     restoreToken();
-  }, []);
+  }, [resetAnalysis]);
 
   const authContext = useMemo(
     () => ({
       token,
       signIn: async (accessToken) => {
+        resetAnalysis();
         await AsyncStorage.setItem(TOKEN_KEY, accessToken);
         setAuthToken(accessToken);
         setToken(accessToken);
@@ -44,10 +60,11 @@ export default function RootNavigator() {
       signOut: async () => {
         await AsyncStorage.removeItem(TOKEN_KEY);
         setAuthToken(null);
+        resetAnalysis();
         setToken(null);
       },
     }),
-    [token],
+    [resetAnalysis, token],
   );
 
   if (isLoading) {

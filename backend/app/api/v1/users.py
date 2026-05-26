@@ -3,10 +3,16 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.auth import get_optional_current_user
+from app.api.auth import get_current_user
 from app.db import get_db
 from app.models import Skill, User, UserSkill
-from app.schemas import SkillAssessment, UserProfileCreate, UserProfileResponse
+from app.schemas import (
+    GithubProfileResponse,
+    GithubProfileUpdate,
+    SkillAssessment,
+    UserProfileCreate,
+    UserProfileResponse,
+)
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 logger = logging.getLogger(__name__)
@@ -20,7 +26,7 @@ logger = logging.getLogger(__name__)
 def create_user_profile(
     payload: UserProfileCreate,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_optional_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     assessments = _normalize_skill_assessments(payload)
     if not assessments:
@@ -30,14 +36,13 @@ def create_user_profile(
         )
     skill_names = [assessment.name for assessment in assessments]
 
-    user = current_user or User()
+    user = current_user
     user.job_target = payload.job_target
+    user.interest_domain = payload.interest_domain.strip() or "커머스"
     user.experience_level = payload.experience_level
     user.goal_period = payload.goal_period
 
     try:
-        if current_user is None:
-            db.add(user)
         db.flush()
         db.query(UserSkill).filter(UserSkill.user_id == user.id).delete()
 
@@ -79,12 +84,30 @@ def create_user_profile(
     return UserProfileResponse(
         user_id=str(user.id),
         job_target=user.job_target,
+        interest_domain=user.interest_domain,
         experience_level=user.experience_level,
         skills=[assessment.name for assessment in assessments if assessment.level > 0],
         skill_assessments=assessments,
         goal_period=user.goal_period,
         status="created",
     )
+
+
+@router.patch("/me/github", response_model=GithubProfileResponse)
+def update_github_profile(
+    payload: GithubProfileUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    github_url = (payload.github_url or "").strip()
+    if github_url and not github_url.startswith(("https://github.com/", "http://github.com/")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="GitHub 주소는 https://github.com/ 으로 시작해야 합니다.",
+        )
+    current_user.github_url = github_url or None
+    db.commit()
+    return {"github_url": current_user.github_url, "status": "updated"}
 
 
 def _normalize_skill_assessments(payload: UserProfileCreate) -> list[SkillAssessment]:

@@ -26,6 +26,18 @@ class Roadmap(Base):
         cascade="all, delete-orphan",
         order_by="RoadmapWeek.week_number",
     )
+    reassessments = relationship(
+        "RoadmapReassessment",
+        back_populates="roadmap",
+        cascade="all, delete-orphan",
+        order_by="RoadmapReassessment.checkpoint_week",
+    )
+    project_submissions = relationship(
+        "ProjectSubmission",
+        back_populates="roadmap",
+        cascade="all, delete-orphan",
+        order_by="ProjectSubmission.cycle_index",
+    )
 
 
 class RoadmapWeek(Base):

@@ -51,6 +51,11 @@ export async function createUserProfile(payload) {
   return response.data;
 }
 
+export async function updateGithubProfile(payload) {
+  const response = await apiClient.patch('/api/v1/users/me/github', payload);
+  return response.data;
+}
+
 export async function createCareerPath(payload) {
   const response = await apiClient.post('/api/v1/agent/career-path', payload);
   return response.data;
@@ -80,5 +85,32 @@ export async function toggleRoadmapTask(taskId) {
 
 export async function getMyRoadmapProgress() {
   const response = await apiClient.get('/api/v1/roadmaps/me/progress');
+  return response.data;
+}
+
+export async function getCertificationBetaOptions(jobTarget) {
+  const response = await apiClient.get('/api/v1/roadmaps/certifications/beta', {
+    params: { job_target: jobTarget },
+  });
+  return response.data;
+}
+
+export async function includeCertificationInRoadmap(code) {
+  const response = await apiClient.post(`/api/v1/roadmaps/me/certifications/${code}/include`);
+  return response.data;
+}
+
+export async function submitRoadmapReassessment(payload) {
+  const response = await apiClient.post('/api/v1/roadmaps/me/reassessments', payload);
+  return response.data;
+}
+
+export async function submitProjectForEvaluation(payload) {
+  const response = await apiClient.post('/api/v1/projects/submissions', payload);
+  return response.data;
+}
+
+export async function requestProjectAiReview(submissionId) {
+  const response = await apiClient.post(`/api/v1/projects/submissions/${submissionId}/ai-review`);
   return response.data;
 }

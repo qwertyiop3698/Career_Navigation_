@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -21,6 +21,8 @@ const JOB_ROLES = [
   "Data Scientist",
   "Builder",
 ];
+
+const DOMAINS = ["금융", "커머스", "헬스케어", "교육", "콘텐츠", "스포츠", "채용/HR", "직접 입력"];
 
 const CHECKLIST_CANDIDATES = {
   "Backend Developer": ["Java", "Python", "SQL", "Docker", "AWS", "PostgreSQL"],
@@ -62,8 +64,8 @@ const SKILL_ACTIONS = {
 
 const initialForm = {
   job_target: "AI Backend Developer",
-  experience_level: "Junior",
-  goal_period: "12",
+  interest_domain: "커머스",
+  custom_domain: "",
 };
 
 export default function InputScreen({
@@ -76,6 +78,7 @@ export default function InputScreen({
   const [isSkillsLoading, setIsSkillsLoading] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const customDomainInputRef = useRef(null);
   const { setActiveRoadmap, setAnalysisResult, setLastSkills } = useAnalysis();
 
   useEffect(() => {
@@ -106,6 +109,12 @@ export default function InputScreen({
     };
   }, [form.job_target]);
 
+  useEffect(() => {
+    if (form.interest_domain !== "직접 입력") return;
+    const focusTimer = setTimeout(() => customDomainInputRef.current?.focus(), 0);
+    return () => clearTimeout(focusTimer);
+  }, [form.interest_domain]);
+
   const updateForm = (key, value) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
@@ -123,15 +132,21 @@ export default function InputScreen({
     setIsLoading(true);
 
     try {
+      const interestDomain =
+        form.interest_domain === "직접 입력"
+          ? form.custom_domain.trim() || "커머스"
+          : form.interest_domain;
       const profilePayload = {
         job_target: form.job_target,
-        experience_level: form.experience_level,
+        interest_domain: interestDomain,
+        experience_level: "Junior",
         skill_assessments: skillAssessments,
-        goal_period: Number(form.goal_period) || 12,
+        goal_period: 12,
       };
       const profile = await createUserProfile(profilePayload);
       const careerPath = await createCareerPath({
         job_role: form.job_target,
+        interest_domain: interestDomain,
         target_skill: skillAssessments[0]?.name ?? "Core skill",
         skill_assessments: skillAssessments,
       });
@@ -141,6 +156,7 @@ export default function InputScreen({
         ? {
             id: careerPath.roadmap_id,
             job_target: careerPath.future_job ?? form.job_target,
+            interest_domain: careerPath.interest_domain ?? interestDomain,
             progress_percent: careerPath.progress_percent ?? 0,
             readiness_score: careerPath.readiness_score ?? 0,
             capability_score: careerPath.capability_score ?? 0,
@@ -148,6 +164,10 @@ export default function InputScreen({
             application_readiness_score: careerPath.application_readiness_score ?? 0,
             cycles: careerPath.cycles ?? [],
             evidence_summary: careerPath.evidence_summary ?? [],
+            skill_diagnostics: careerPath.skill_diagnostics ?? [],
+            project_blueprints: careerPath.project_blueprints ?? [],
+            skill_assessments: careerPath.skill_assessments ?? skillAssessments,
+            reassessments: [],
             weeks: careerPath.roadmap_12_weeks,
           }
         : null;
@@ -162,10 +182,9 @@ export default function InputScreen({
         missing_skills: careerPath.missing_skills ?? recommendedSkills,
         recommended_learning: recommendedSkills,
         job_target: careerPath.future_job ?? form.job_target,
-        experience_level: form.experience_level,
-        goal_period: Number(form.goal_period) || 12,
+        interest_domain: careerPath.interest_domain ?? interestDomain,
       });
-      navigation.navigate("Result");
+      navigation.navigate("MainTabs", { screen: "Result" });
     } catch (requestError) {
       const responseData = requestError.response?.data;
       const detail =
@@ -208,21 +227,37 @@ export default function InputScreen({
             </Pressable>
           ))}
         </View>
-        <Field
-          label="경험 수준"
-          value={form.experience_level}
-          onChangeText={(value) => updateForm("experience_level", value)}
-          placeholder="Junior"
-          isSmallScreen={isSmallScreen}
-        />
-        <Field
-          keyboardType="number-pad"
-          label="목표 기간(주)"
-          value={form.goal_period}
-          onChangeText={(value) => updateForm("goal_period", value)}
-          placeholder="12"
-          isSmallScreen={isSmallScreen}
-        />
+        <Text style={commonStyles.label}>관심 소재</Text>
+        <Text style={commonStyles.bodyText}>
+          프로젝트 기술 추천에는 영향을 주지 않으며, 흥미 있는 데이터 예시와 설명 맥락에만 반영됩니다.
+        </Text>
+        <View style={styles.roleWrap}>
+          {DOMAINS.map((domain) => (
+            <Pressable
+              key={domain}
+              onPress={() => updateForm("interest_domain", domain)}
+              style={[styles.roleButton, form.interest_domain === domain && styles.selectedRole]}
+            >
+              <Text
+                style={[styles.roleText, form.interest_domain === domain && styles.selectedRoleText]}
+              >
+                {domain}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        {form.interest_domain === "직접 입력" && (
+          <TextInput
+            autoFocus
+            onChangeText={(value) => updateForm("custom_domain", value)}
+            placeholder="예: 기후테크, 부동산, 게임"
+            placeholderTextColor="#8D948D"
+            ref={customDomainInputRef}
+            returnKeyType="done"
+            style={commonStyles.input}
+            value={form.custom_domain}
+          />
+        )}
       </View>
 
       <View style={[commonStyles.card, isSmallScreen && commonStyles.compactCard]}>
@@ -296,19 +331,6 @@ function SkillChecklist({ assessment, onChange }) {
         ))}
       </View>
       <Text style={styles.levelCaption}>{LEVEL_LABELS[assessment.level]}</Text>
-    </View>
-  );
-}
-
-function Field({ isSmallScreen, label, ...props }) {
-  return (
-    <View style={commonStyles.field}>
-      <Text style={commonStyles.label}>{label}</Text>
-      <TextInput
-        placeholderTextColor="#8D948D"
-        style={[commonStyles.input, isSmallScreen && commonStyles.compactInput]}
-        {...props}
-      />
     </View>
   );
 }

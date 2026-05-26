@@ -2,12 +2,15 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.schemas.user import SkillAssessment
+
 
 class CareerPathRequest(BaseModel):
     user_id: UUID | None = Field(None, examples=["6f4f312e-6d74-4e03-aecd-29e8ee4d6832"])
     job_role: str = Field(..., examples=["AI Backend Developer"])
+    interest_domain: str = Field("커머스", examples=["스포츠"])
     target_skill: str = Field(..., examples=["RAG"])
-    skill_assessments: list[dict] = Field(default_factory=list)
+    skill_assessments: list[SkillAssessment] = Field(default_factory=list)
 
 
 class RoadmapStep(BaseModel):
@@ -40,6 +43,7 @@ class CareerPathRoadmapWeek(BaseModel):
 
 class CareerPathResponse(BaseModel):
     future_job: str
+    interest_domain: str
     demand_probability: float
     impact: str
     recommended_skills: list[str]
@@ -53,7 +57,9 @@ class CareerPathResponse(BaseModel):
     covered_skills: list[str] = Field(default_factory=list)
     missing_skills: list[str] = Field(default_factory=list)
     recommended_projects: list[str] = Field(default_factory=list)
+    project_blueprints: list[dict] = Field(default_factory=list)
     evidence_summary: list[dict] = Field(default_factory=list)
+    skill_diagnostics: list[dict] = Field(default_factory=list)
     cycles: list[dict] = Field(default_factory=list)
     summary: str | None = None
     readiness_score: int = 0

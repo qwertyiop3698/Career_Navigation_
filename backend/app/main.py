@@ -10,6 +10,7 @@ from app.api.data_collection import legacy_router as legacy_data_collection_rout
 from app.api.data_collection import router as data_collection_router
 from app.api.job import router as jobs_router
 from app.api.model import router as model_router
+from app.api.project import router as project_router
 from app.api.rag import router as rag_router
 from app.api.roadmap import router as roadmaps_router
 from app.api.trend import router as trends_router
@@ -41,6 +42,7 @@ app.include_router(data_collection_router)
 app.include_router(legacy_data_collection_router)
 app.include_router(jobs_router)
 app.include_router(model_router)
+app.include_router(project_router)
 app.include_router(rag_router)
 app.include_router(roadmaps_router)
 app.include_router(trends_router)
@@ -71,6 +73,8 @@ def _ensure_mvp_columns():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS nickname TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS github_url TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS interest_domain TEXT",
         "ALTER TABLE user_skills ADD COLUMN IF NOT EXISTS proficiency_level INTEGER DEFAULT 0",
         "ALTER TABLE user_skills ADD COLUMN IF NOT EXISTS evidence_note TEXT",
         "ALTER TABLE user_skills ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP",

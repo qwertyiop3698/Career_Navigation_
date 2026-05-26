@@ -1,17 +1,19 @@
-import uuid
 from datetime import datetime
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, selectinload
 
-from app.models import Roadmap, RoadmapTask, RoadmapWeek, User
+from app.models import (
+    ProjectSubmission,
+    Roadmap,
+    RoadmapReassessment,
+    RoadmapTask,
+    RoadmapWeek,
+)
 from app.services.evidence_roadmap_service import (
     build_evidence_roadmap_context,
     build_evidence_week_template,
 )
-
-DEMO_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
-DEMO_EMAIL = "demo@career.local"
 
 SUPPORTED_JOB_TARGETS = [
     "Backend Developer",
@@ -152,25 +154,6 @@ JOB_SKILLS = {
 }
 
 
-def get_demo_user(db: Session) -> User:
-    user = db.query(User).filter(User.id == DEMO_USER_ID).first()
-    if user:
-        return user
-
-    user = User(
-        id=DEMO_USER_ID,
-        email=DEMO_EMAIL,
-        nickname="데모 사용자",
-    )
-    db.add(user)
-    db.flush()
-    return user
-
-
-def get_current_user_id(db: Session) -> uuid.UUID:
-    return get_demo_user(db).id
-
-
 def normalize_job_target(job_target: str) -> str:
     value = (job_target or "").strip()
     if value in SUPPORTED_JOB_TARGETS:
@@ -191,14 +174,15 @@ def normalize_job_target(job_target: str) -> str:
 
 def create_active_roadmap(
     db: Session,
+    user_id,
     job_target: str,
+    interest_domain: str = "커머스",
     experience_level: str = "Junior",
     skills: list[str] | None = None,
     skill_assessments: list[dict] | None = None,
     goal_period: int = 12,
-    user_id: uuid.UUID | None = None,
 ) -> Roadmap:
-    owner_id = user_id or get_current_user_id(db)
+    owner_id = user_id
     normalized_job = normalize_job_target(job_target)
 
     db.query(Roadmap).filter(
@@ -210,7 +194,7 @@ def create_active_roadmap(
         {"name": skill, "level": 3} for skill in (skills or [])
     ]
     roadmap_context = build_evidence_roadmap_context(
-        db, normalized_job, normalized_assessments
+        db, normalized_job, normalized_assessments, interest_domain
     )
     roadmap = Roadmap(
         user_id=owner_id,
@@ -249,11 +233,15 @@ def create_active_roadmap(
     return get_active_roadmap(db, owner_id)
 
 
-def get_active_roadmap(db: Session, user_id: uuid.UUID | None = None) -> Roadmap | None:
-    owner_id = user_id or get_current_user_id(db)
+def get_active_roadmap(db: Session, user_id) -> Roadmap | None:
+    owner_id = user_id
     return (
         db.query(Roadmap)
-        .options(selectinload(Roadmap.weeks).selectinload(RoadmapWeek.tasks))
+        .options(
+            selectinload(Roadmap.weeks).selectinload(RoadmapWeek.tasks),
+            selectinload(Roadmap.reassessments),
+            selectinload(Roadmap.project_submissions).selectinload(ProjectSubmission.evaluation),
+        )
         .filter(Roadmap.user_id == owner_id, Roadmap.is_active.is_(True))
         .first()
     )
@@ -262,7 +250,7 @@ def get_active_roadmap(db: Session, user_id: uuid.UUID | None = None) -> Roadmap
 def toggle_task(
     db: Session,
     task_id: int,
-    user_id: uuid.UUID | None = None,
+    user_id,
 ) -> tuple[RoadmapTask, Roadmap, int, int]:
     query = (
         db.query(RoadmapTask)
@@ -270,8 +258,7 @@ def toggle_task(
         .join(Roadmap)
         .filter(RoadmapTask.id == task_id)
     )
-    if user_id is not None:
-        query = query.filter(Roadmap.user_id == user_id)
+    query = query.filter(Roadmap.user_id == user_id)
     task = query.first()
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="할 일을 찾을 수 없습니다.")
@@ -313,6 +300,7 @@ def serialize_roadmap(roadmap: Roadmap) -> dict:
         "id": roadmap.id,
         "user_id": str(roadmap.user_id),
         "job_target": roadmap.job_target,
+        "interest_domain": context.get("interest_domain", "커머스"),
         "experience_level": roadmap.experience_level,
         "goal_period": roadmap.goal_period,
         "progress_percent": roadmap.progress_percent,
@@ -324,7 +312,47 @@ def serialize_roadmap(roadmap: Roadmap) -> dict:
         "recommended_skills": context.get("recommended_skills", []),
         **scores,
         "cycles": context.get("cycles", []),
+        "project_blueprints": context.get("project_blueprints", []),
         "evidence_summary": context.get("evidence_summary", []),
+        "skill_diagnostics": context.get("skill_diagnostics", []),
+        "reassessments": [
+            {
+                "checkpoint_week": reassessment.checkpoint_week,
+                "capability_score_before": reassessment.capability_score_before,
+                "capability_score_after": reassessment.capability_score_after,
+                "skill_assessments": reassessment.updated_assessments,
+                "created_at": reassessment.created_at.isoformat()
+                if reassessment.created_at
+                else None,
+            }
+            for reassessment in roadmap.reassessments
+        ],
+        "project_submissions": [
+            {
+                "id": submission.id,
+                "cycle_index": submission.cycle_index,
+                "project_title": submission.project_title,
+                "github_url": submission.github_url,
+                "submitted_at": submission.submitted_at.isoformat()
+                if submission.submitted_at
+                else None,
+                "evaluation": {
+                    "id": submission.evaluation.id,
+                    "rule_score": submission.evaluation.rule_score,
+                    "project_evidence_points": submission.evaluation.project_evidence_points,
+                    "status": submission.evaluation.status,
+                    "score_breakdown": submission.evaluation.score_breakdown or {},
+                    "passed_checks": submission.evaluation.passed_checks or [],
+                    "missing_checks": submission.evaluation.missing_checks or [],
+                    "critical_issues": submission.evaluation.critical_issues or [],
+                    "ai_review": submission.evaluation.ai_review,
+                    "ai_model": submission.evaluation.ai_model,
+                    "ai_estimated_cost_usd": submission.evaluation.ai_estimated_cost_usd,
+                },
+            }
+            for submission in roadmap.project_submissions
+            if submission.evaluation is not None
+        ],
         "evidence_note": context.get("evidence_note"),
         "weeks": [
             {
@@ -350,18 +378,112 @@ def serialize_roadmap(roadmap: Roadmap) -> dict:
     }
 
 
+def submit_reassessment(
+    db: Session,
+    roadmap: Roadmap,
+    checkpoint_week: int,
+    skill_assessments: list[dict],
+) -> Roadmap:
+    if checkpoint_week not in {6, 12}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="재진단은 6주차 또는 12주차에 저장할 수 있습니다.",
+        )
+    if any(item.checkpoint_week == checkpoint_week for item in roadmap.reassessments):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="해당 시점의 재진단이 이미 저장되어 있습니다.",
+        )
+
+    previous_context = dict(roadmap.content or {})
+    updated_context = build_evidence_roadmap_context(
+        db,
+        roadmap.job_target,
+        skill_assessments,
+        previous_context.get("interest_domain", "커머스"),
+    )
+    if previous_context.get("selected_certifications"):
+        updated_context["selected_certifications"] = previous_context["selected_certifications"]
+
+    roadmap.reassessments.append(
+        RoadmapReassessment(
+            user_id=roadmap.user_id,
+            checkpoint_week=checkpoint_week,
+            previous_assessments=previous_context.get("skill_assessments", []),
+            updated_assessments=skill_assessments,
+            previous_diagnostics=previous_context.get("skill_diagnostics", []),
+            updated_diagnostics=updated_context.get("skill_diagnostics", []),
+            capability_score_before=int(previous_context.get("capability_score", 0)),
+            capability_score_after=int(updated_context.get("capability_score", 0)),
+        )
+    )
+    roadmap.content = updated_context
+
+    if checkpoint_week == 6:
+        _replace_future_learning_plan(db, roadmap, updated_context, checkpoint_week)
+
+    recalculate_progress(db, roadmap)
+    db.flush()
+    return get_active_roadmap(db, roadmap.user_id)
+
+
+def _replace_future_learning_plan(
+    db: Session,
+    roadmap: Roadmap,
+    updated_context: dict,
+    checkpoint_week: int,
+) -> None:
+    future_weeks = [week for week in roadmap.weeks if week.week_number > checkpoint_week]
+    regular_tasks = [
+        task
+        for week in future_weeks
+        for task in week.tasks
+        if task.task_type != "certificate"
+    ]
+    if any(task.is_completed for task in regular_tasks):
+        return
+
+    templates = {
+        template["week_number"]: template
+        for template in build_evidence_week_template(updated_context)
+        if template["week_number"] > checkpoint_week
+    }
+    for week in future_weeks:
+        template = templates.get(week.week_number)
+        if template is None:
+            continue
+        week.title = template["title"]
+        week.goal = template["goal"]
+        for task in list(week.tasks):
+            if task.task_type == "certificate":
+                continue
+            week.tasks.remove(task)
+            db.delete(task)
+        for task in template["tasks"]:
+            week.tasks.append(
+                RoadmapTask(
+                    task_title=task["task_title"],
+                    task_type=task["task_type"],
+                )
+            )
+
+
 def calculate_readiness_scores(roadmap: Roadmap) -> dict:
     context = roadmap.content or {}
     capability_score = min(60, max(0, int(context.get("capability_score", 0))))
     tasks = [task for week in roadmap.weeks for task in week.tasks]
-    project_tasks = [
-        task for task in tasks if task.task_type in {"project", "portfolio"}
-    ]
     application_tasks = [
         task for task in tasks
         if task.task_type in {"resume", "interview", "job_search"}
     ]
-    project_evidence_score = _completion_score(project_tasks, 25)
+    project_evidence_score = min(
+        25,
+        sum(
+            submission.evaluation.project_evidence_points
+            for submission in roadmap.project_submissions
+            if submission.evaluation is not None
+        ),
+    )
     application_readiness_score = _completion_score(application_tasks, 15)
     return {
         "readiness_score": (

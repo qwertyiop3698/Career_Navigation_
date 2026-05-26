@@ -9,8 +9,8 @@ Career Navigation AI는 IT 직무 준비를 "분석 → 로드맵 생성 → 12�
 - 프론트엔드: Expo React Native 모바일 앱
 - 백엔드: FastAPI + SQLAlchemy
 - 데이터베이스: PostgreSQL + pgvector
-- 현재 인증 정책: 로그인 화면 구조는 유지하지만 실제 진입 차단은 비활성화
-- MVP 사용자 정책: demo user 기준으로 회원별 1개 활성 로드맵 관리
+- 현재 인증 정책: 회원가입/로그인 후에만 개인 기능 사용 가능
+- 사용자 정책: 로그인 계정별 1개 활성 로드맵과 프로젝트 평가 관리
 
 ## 2. MVP 핵심 기능
 
@@ -62,14 +62,18 @@ Career Navigation AI는 IT 직무 준비를 "분석 → 로드맵 생성 → 12�
    - 기존 분석 API 흐름을 유지합니다.
 
 4. Result
-   - 분석 결과, 추천 기술, 로드맵 진행률 요약을 보여줍니다.
+   - `12주 취업 준비 달성률`과 추천 학습/프로젝트 설계를 보여줍니다.
+   - 달성률은 취업 성공 확률이 아니라 기술, 프로젝트, 서류/면접 준비의 증명 완료 비율입니다.
 
 5. Roadmap
    - 12주 로드맵과 주차별 task를 표시합니다.
    - task 체크 시 백엔드에 저장되고 진행률이 즉시 업데이트됩니다.
 
-6. MyInfo
-   - 현재는 로그인 비활성화 상태 안내와 저장 로드맵 확장 영역을 표시합니다.
+6. 과제검증
+   - 프로젝트 결과물 제출, 무료 규칙 평가, 요청형 AI 엄격 리뷰를 수행합니다.
+
+7. MyInfo
+   - 로그인 계정 정보와 해당 계정의 저장 로드맵 진행률을 표시합니다.
 
 ## 5. 기술 스택
 
@@ -141,7 +145,7 @@ Career Navigation AI는 IT 직무 준비를 "분석 → 로드맵 생성 → 12�
 ### Roadmaps
 
 - `POST /api/v1/roadmaps`
-  - 현재 demo user의 활성 로드맵을 생성합니다.
+  - 로그인한 사용자의 활성 로드맵을 생성합니다.
   - 새 로드맵 생성 시 기존 활성 로드맵은 비활성화됩니다.
 - `GET /api/v1/roadmaps/me`
   - 현재 활성 로드맵을 조회합니다.
@@ -149,6 +153,15 @@ Career Navigation AI는 IT 직무 준비를 "분석 → 로드맵 생성 → 12�
   - task 완료 상태를 토글하고 진행률을 다시 계산합니다.
 - `GET /api/v1/roadmaps/me/progress`
   - 진행률, 완료 task 수, 전체 task 수를 조회합니다.
+
+### Project Evidence Review
+
+- `POST /api/v1/projects/submissions`
+  - 프로젝트 결과물 설명과 README 발췌를 무료 규칙 평가하고 `프로젝트 증명도`에 반영합니다.
+  - 이 단계는 제출된 문서 근거의 충실도를 평가하며, 원격 코드 실행이나 저장소 진위 확인을 대신하지 않습니다.
+- `POST /api/v1/projects/submissions/{submission_id}/ai-review`
+  - 사용자가 명시적으로 요청했을 때만 OpenAI API로 엄격한 텍스트 리뷰를 실행합니다.
+  - AI 리뷰는 점수를 올리지 않으며, 확인된 근거와 수정할 항목만 반환합니다.
 
 ### Data Collection
 
@@ -283,30 +296,28 @@ npm start -- --clear
 주의:
 
 - API 키는 코드에 하드코딩하지 않습니다.
+- AI 프로젝트 리뷰는 버튼을 누를 때만 실행되며, `OPENAI_REVIEW_MONTHLY_BUDGET_USD` 기본값 `$1.00` 범위에서 이 기능의 예상 사용료를 제한합니다.
+- 기본 리뷰 모델은 `gpt-5.4-mini`, 응답 한도는 `OPENAI_REVIEW_MAX_OUTPUT_TOKENS=900`입니다.
 - Docker 내부 DB 주소는 `db:5432`를 사용합니다.
 - 로컬에서 직접 uvicorn을 실행할 경우 DB 주소를 환경에 맞게 조정해야 합니다.
 
 ## 10. 현재 로그인 정책
 
-현재 로그인 기능은 스킵 단계입니다.
+현재 로그인 기능이 활성화되어 있습니다.
 
 ```js
 // frontend/src/config.js
-export const AUTH_ENABLED = false;
+export const AUTH_ENABLED = true;
 ```
 
-- `LoginScreen`, `SignupScreen`, `AuthContext` 구조는 보존되어 있습니다.
-- `AUTH_ENABLED=false`이면 토큰 체크 없이 앱에 진입합니다.
-- 백엔드 로드맵은 demo user 기준으로 저장됩니다.
-- demo user:
-  - email: `demo@career.local`
-  - nickname: `데모 사용자`
-- 나중에 로그인 기능을 켜면 demo user 대신 실제 user_id를 연결할 수 있도록 백엔드 구조는 user_id 기반으로 설계되어 있습니다.
+- 회원가입 또는 로그인 후에만 개인 로드맵 화면에 진입합니다.
+- 프로필, 분석 결과, 로드맵, 재진단, 프로젝트 평가는 로그인한 사용자 ID 기준으로 저장됩니다.
+- 로그아웃하거나 다른 계정으로 로그인하면 앱의 이전 분석/로드맵 표시 상태가 초기화됩니다.
+- 사용자 전용 API는 토큰이 없으면 `401`을 반환합니다.
 
 ## 11. 향후 확장 계획
 
-- 실제 회원가입/로그인 API 구현
-- JWT 기반 user_id 연결
+- 토큰 갱신과 비밀번호 재설정 흐름
 - 회원별 로드맵 저장 목록 제공
 - 로드맵 수정/삭제 기능
 - 주차별 메모, 학습 링크, 증빙 자료 업로드

@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.auth import get_optional_current_user
+from app.api.auth import get_current_user
 from app.db import get_db
 from app.models import User
 from app.schemas import (
@@ -18,31 +18,27 @@ router = APIRouter(prefix="/api/v1/agent", tags=["agent"])
 def create_career_path(
     payload: CareerPathRequest,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_optional_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    effective_user_id = current_user.id if current_user is not None else payload.user_id
-
-    if effective_user_id is not None:
-        user = db.query(User).filter(User.id == effective_user_id).first()
-        if user is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found.",
-            )
+    effective_user_id = current_user.id
+    user = current_user
 
     try:
-        stored_assessments = (
+        stored_assessments = [
+            {
+                "name": user_skill.skill.name,
+                "level": user_skill.proficiency_level or 0,
+            }
+            for user_skill in user.skills
+        ]
+        skill_assessments = (
             [
-                {
-                    "name": user_skill.skill.name,
-                    "level": user_skill.proficiency_level or 0,
-                }
-                for user_skill in user.skills
+                {"name": assessment.name, "level": assessment.level}
+                for assessment in payload.skill_assessments
             ]
-            if effective_user_id is not None
-            else []
+            if payload.skill_assessments
+            else stored_assessments
         )
-        skill_assessments = payload.skill_assessments or stored_assessments
         current_skills = [
             assessment["name"]
             for assessment in skill_assessments
@@ -52,6 +48,7 @@ def create_career_path(
             db=db,
             user_id=effective_user_id,
             job_target=payload.job_role,
+            interest_domain=payload.interest_domain,
             experience_level="Junior",
             skills=current_skills,
             skill_assessments=skill_assessments,
@@ -65,6 +62,7 @@ def create_career_path(
 
     return CareerPathResponse(
         future_job=serialized_roadmap["job_target"],
+        interest_domain=serialized_roadmap["interest_domain"],
         demand_probability=0.0,
         impact="취업 결과 예측이 아니라 현재 공고 근거를 활용한 지원 준비 로드맵입니다.",
         recommended_skills=serialized_roadmap["recommended_skills"],
@@ -87,7 +85,9 @@ def create_career_path(
         recommended_projects=[
             cycle["project"] for cycle in serialized_roadmap["cycles"]
         ],
+        project_blueprints=serialized_roadmap["project_blueprints"],
         evidence_summary=serialized_roadmap["evidence_summary"],
+        skill_diagnostics=serialized_roadmap["skill_diagnostics"],
         cycles=serialized_roadmap["cycles"],
         readiness_score=serialized_roadmap["readiness_score"],
         capability_score=serialized_roadmap["capability_score"],

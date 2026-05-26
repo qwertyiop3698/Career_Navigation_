@@ -1,10 +1,12 @@
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { BookOpen, CalendarDays, ClipboardList, Home, UserRound } from "lucide-react-native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { BookOpen, CalendarDays, ClipboardCheck, Home, UserRound } from "lucide-react-native";
 import { Pressable, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "../components/AppHeader";
 import { AUTH_ENABLED } from "../config";
+import AssignmentReviewScreen from "../screens/AssignmentReviewScreen";
 import CalendarScreen from "../screens/CalendarScreen";
 import HomeScreen from "../screens/HomeScreen";
 import InputScreen from "../screens/InputScreen";
@@ -12,8 +14,28 @@ import ProfileScreen from "../screens/ProfileScreen";
 import ResultScreen from "../screens/ResultScreen";
 
 const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="MainTabs" component={MainTabs} />
+      <Stack.Screen
+        name="Input"
+        component={InputScreen}
+        options={{
+          headerShown: true,
+          headerStyle: { backgroundColor: "#F7F1E8" },
+          headerTintColor: "#17483E",
+          headerTitle: "새로 분석하기",
+          headerShadowVisible: false,
+        }}
+      />
+    </Stack.Navigator>
+  );
+}
+
+function MainTabs({ navigation }) {
   const insets = useSafeAreaInsets();
   const { height, width } = useWindowDimensions();
   const isSmallScreen = width < 360 || height < 700;
@@ -30,6 +52,7 @@ export default function AppNavigator() {
         isLoggedIn
         showAuthControls={AUTH_ENABLED}
         showMenuButton={false}
+        onProfilePress={() => navigation.navigate("MainTabs", { screen: "Profile" })}
       />
       <Tab.Navigator
         initialRouteName="Home"
@@ -42,10 +65,7 @@ export default function AppNavigator() {
             fontWeight: "900",
             marginTop: 1,
           },
-          tabBarStyle:
-            route.name === "Input"
-              ? { display: "none" }
-              : {
+          tabBarStyle: {
                   alignSelf: "center",
                   backgroundColor: "#F7F1E8",
                   borderColor: "#DED3C1",
@@ -78,10 +98,9 @@ export default function AppNavigator() {
               />
             );
           },
-          tabBarButton: (props) =>
-            route.name === "Input" ? null : (
-              <TabButtonWrapper {...props} active={props.accessibilityState?.selected} />
-            ),
+          tabBarButton: (props) => (
+            <TabButtonWrapper {...props} active={props.accessibilityState?.selected} />
+          ),
         })}
       >
         <Tab.Screen name="Home" options={{ title: "홈" }}>
@@ -111,18 +130,18 @@ export default function AppNavigator() {
             />
           )}
         </Tab.Screen>
-        <Tab.Screen name="Profile" options={{ title: "내정보" }}>
+        <Tab.Screen name="Assignment" options={{ title: "과제검증" }}>
           {(props) => (
-            <ProfileScreen
+            <AssignmentReviewScreen
               {...props}
               contentBottomPadding={contentBottomPadding}
               isSmallScreen={isSmallScreen}
             />
           )}
         </Tab.Screen>
-        <Tab.Screen name="Input" options={{ title: "새로 분석하기" }}>
+        <Tab.Screen name="Profile" options={{ title: "내정보" }}>
           {(props) => (
-            <InputScreen
+            <ProfileScreen
               {...props}
               contentBottomPadding={contentBottomPadding}
               isSmallScreen={isSmallScreen}
@@ -157,6 +176,7 @@ function getTabIcon(name) {
   if (name === "Home") return Home;
   if (name === "Result") return BookOpen;
   if (name === "Calendar") return CalendarDays;
+  if (name === "Assignment") return ClipboardCheck;
   if (name === "Profile") return UserRound;
-  return ClipboardList;
+  return Home;
 }

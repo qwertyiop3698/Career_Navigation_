@@ -5,6 +5,7 @@ from app.schemas.user import SkillAssessment
 
 class RoadmapCreateRequest(BaseModel):
     job_target: str = Field(..., examples=["AI Backend Developer"])
+    interest_domain: str = Field("커머스", examples=["교육"])
     experience_level: str = Field("Junior", examples=["Junior"])
     skills: list[str] = Field(default_factory=list, examples=[["Python", "SQL", "FastAPI"]])
     skill_assessments: list[SkillAssessment] = Field(default_factory=list)
@@ -31,6 +32,7 @@ class RoadmapResponse(BaseModel):
     id: int
     user_id: str
     job_target: str
+    interest_domain: str = "커머스"
     experience_level: str | None = None
     goal_period: int | None = None
     progress_percent: int
@@ -45,7 +47,11 @@ class RoadmapResponse(BaseModel):
     project_evidence_score: int = 0
     application_readiness_score: int = 0
     cycles: list[dict] = Field(default_factory=list)
+    project_blueprints: list[dict] = Field(default_factory=list)
     evidence_summary: list[dict] = Field(default_factory=list)
+    skill_diagnostics: list[dict] = Field(default_factory=list)
+    reassessments: list[dict] = Field(default_factory=list)
+    project_submissions: list[dict] = Field(default_factory=list)
     evidence_note: str | None = None
     weeks: list[RoadmapWeekResponse]
 
@@ -74,3 +80,25 @@ class RoadmapProgressResponse(BaseModel):
     completed_count: int
     total_count: int
     message: str | None = None
+
+
+class CertificationBetaOptionResponse(BaseModel):
+    code: str
+    name: str
+    round: str
+    provider: str
+    registration_start: str
+    registration_end: str
+    exam_date: str
+    result_date: str
+    recommended_prep_weeks: int
+    recommended_start_date: str
+    fit_reason: str
+    official_url: str
+    is_selected: bool
+    score_policy: str
+
+
+class RoadmapReassessmentRequest(BaseModel):
+    checkpoint_week: int = Field(..., ge=6, le=12)
+    skill_assessments: list[SkillAssessment]

@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 
 const AnalysisContext = createContext(null);
 
@@ -6,6 +6,11 @@ export function AnalysisProvider({ children }) {
   const [analysisResult, setAnalysisResult] = useState(null);
   const [activeRoadmap, setActiveRoadmap] = useState(null);
   const [lastSkills, setLastSkills] = useState(["Python", "SQL", "RAG"]);
+  const resetAnalysis = useCallback(() => {
+    setAnalysisResult(null);
+    setActiveRoadmap(null);
+    setLastSkills([]);
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -15,8 +20,9 @@ export function AnalysisProvider({ children }) {
       setAnalysisResult,
       setActiveRoadmap,
       setLastSkills,
+      resetAnalysis,
     }),
-    [analysisResult, activeRoadmap, lastSkills],
+    [analysisResult, activeRoadmap, lastSkills, resetAnalysis],
   );
 
   return (

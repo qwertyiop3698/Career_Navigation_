@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
-import { getMe, getMyRoadmap, getMyRoadmapProgress } from "../api/client";
+import { getMe, getMyRoadmap, getMyRoadmapProgress, updateGithubProfile } from "../api/client";
 import { useAnalysis } from "../context/AnalysisContext";
 import { useAuth } from "../navigation/AuthContext";
 import { colors, commonStyles } from "../styles/commonStyles";
@@ -16,6 +16,9 @@ export default function ProfileScreen({
   const [progress, setProgress] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [githubUrl, setGithubUrl] = useState("");
+  const [isSavingGithub, setIsSavingGithub] = useState(false);
+  const [githubMessage, setGithubMessage] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -31,6 +34,7 @@ export default function ProfileScreen({
         ]);
         if (!isMounted) return;
         setUser(me);
+        setGithubUrl(me.github_url ?? "");
         setProgress(progressData);
         if (roadmapData?.roadmap) {
           setActiveRoadmap(roadmapData.roadmap);
@@ -49,6 +53,23 @@ export default function ProfileScreen({
       isMounted = false;
     };
   }, [setActiveRoadmap]);
+
+  const saveGithubUrl = async () => {
+    setIsSavingGithub(true);
+    setGithubMessage("");
+    setError("");
+    try {
+      const result = await updateGithubProfile({ github_url: githubUrl.trim() || null });
+      setGithubUrl(result.github_url ?? "");
+      setUser((current) => ({ ...current, github_url: result.github_url }));
+      setGithubMessage("GitHub 주소를 저장했습니다.");
+    } catch (requestError) {
+      const detail = requestError.response?.data?.detail;
+      setError(typeof detail === "string" ? detail : "GitHub 주소를 저장하지 못했습니다.");
+    } finally {
+      setIsSavingGithub(false);
+    }
+  };
 
   const roadmap = activeRoadmap;
   const progressPercent = progress?.progress_percent ?? roadmap?.progress_percent ?? 0;
@@ -76,7 +97,36 @@ export default function ProfileScreen({
           <>
             <InfoRow label="닉네임" value={user?.nickname || "이름 없음"} />
             <InfoRow label="이메일" value={user?.email || "-"} />
-            <InfoRow label="계정 ID" value={user?.user_id || "-"} />
+            <View style={styles.githubBox}>
+              <Text style={styles.infoLabel}>GitHub 주소</Text>
+              <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                onChangeText={setGithubUrl}
+                placeholder="https://github.com/username"
+                placeholderTextColor="#8D948D"
+                style={commonStyles.input}
+                value={githubUrl}
+              />
+              <View style={styles.githubActions}>
+                <Pressable
+                  disabled={isSavingGithub}
+                  onPress={saveGithubUrl}
+                  style={styles.saveGithubButton}
+                >
+                  <Text style={styles.saveGithubText}>
+                    {isSavingGithub ? "저장 중..." : "저장"}
+                  </Text>
+                </Pressable>
+                {!!user?.github_url && (
+                  <Pressable onPress={() => Linking.openURL(user.github_url)}>
+                    <Text style={styles.openGithubText}>열기</Text>
+                  </Pressable>
+                )}
+              </View>
+              {!!githubMessage && <Text style={styles.savedText}>{githubMessage}</Text>}
+            </View>
           </>
         )}
         {!!error && (
@@ -161,6 +211,44 @@ const styles = {
     fontSize: 15,
     fontWeight: "800",
     lineHeight: 21,
+  },
+  githubBox: {
+    backgroundColor: "#FFFFFF",
+    borderColor: colors.cardBorder,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 8,
+    padding: 12,
+  },
+  githubActions: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 16,
+  },
+  saveGithubButton: {
+    alignItems: "center",
+    backgroundColor: colors.green,
+    borderRadius: 8,
+    justifyContent: "center",
+    minHeight: 42,
+    minWidth: 94,
+    paddingHorizontal: 14,
+  },
+  saveGithubText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  openGithubText: {
+    color: colors.green,
+    fontSize: 14,
+    fontWeight: "900",
+    textDecorationLine: "underline",
+  },
+  savedText: {
+    color: colors.green,
+    fontSize: 13,
+    fontWeight: "800",
   },
   progressBox: {
     backgroundColor: colors.greenSoft,
