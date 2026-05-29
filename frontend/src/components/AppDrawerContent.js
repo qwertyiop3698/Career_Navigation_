@@ -3,10 +3,11 @@ import {
   DrawerItem,
 } from "@react-navigation/drawer";
 import {
-  BookMarked,
   BookOpen,
   CalendarDays,
+  ClipboardCheck,
   ClipboardList,
+  GraduationCap,
   Home,
   LogOut,
   UserRound,
@@ -33,13 +34,13 @@ export default function AppDrawerContent({ navigation, onLogout }) {
           icon={({ color, size }) => <Home color={color} size={size} />}
           label="홈"
           labelStyle={styles.label}
-          onPress={() => navigation.navigate("Home")}
+          onPress={() => goTab("Home")}
         />
         <DrawerItem
           icon={({ color, size }) => <ClipboardList color={color} size={size} />}
           label="분석 입력"
           labelStyle={styles.label}
-          onPress={() => goTab("Input")}
+          onPress={() => navigation.navigate("Input")}
         />
         <DrawerItem
           icon={({ color, size }) => <BookOpen color={color} size={size} />}
@@ -54,10 +55,16 @@ export default function AppDrawerContent({ navigation, onLogout }) {
           onPress={() => goTab("Calendar")}
         />
         <DrawerItem
-          icon={({ color, size }) => <BookMarked color={color} size={size} />}
-          label="저장한 로드맵"
+          icon={({ color, size }) => <ClipboardCheck color={color} size={size} />}
+          label="과제 검증"
           labelStyle={styles.label}
-          onPress={() => goTab("Calendar")}
+          onPress={() => goTab("Assignment")}
+        />
+        <DrawerItem
+          icon={({ color, size }) => <GraduationCap color={color} size={size} />}
+          label="자격증 일정 BETA"
+          labelStyle={styles.label}
+          onPress={() => navigation.navigate("Certification")}
         />
         <DrawerItem
           icon={({ color, size }) => <UserRound color={color} size={size} />}
@@ -88,7 +95,7 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: "#FFFDF8",
     borderColor: "#E1D7C6",
-    borderRadius: 24,
+    borderRadius: 8,
     borderWidth: 1,
     margin: 14,
     padding: 18,

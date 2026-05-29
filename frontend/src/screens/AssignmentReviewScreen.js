@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import {
+  getMe,
   getMyRoadmap,
   requestProjectAiReview,
   submitProjectForEvaluation,
@@ -17,16 +18,20 @@ export default function AssignmentReviewScreen({
   const { activeRoadmap, setActiveRoadmap } = useAnalysis();
   const [expandedProject, setExpandedProject] = useState(null);
   const [forms, setForms] = useState({});
+  const [formErrors, setFormErrors] = useState({});
   const [pendingProject, setPendingProject] = useState(null);
   const [pendingAiReview, setPendingAiReview] = useState(null);
   const [isLoading, setIsLoading] = useState(!activeRoadmap);
   const [error, setError] = useState("");
+  const [savedGithubUrl, setSavedGithubUrl] = useState("");
 
   useEffect(() => {
     let mounted = true;
-    getMyRoadmap()
-      .then((data) => {
-        if (mounted && data?.roadmap) setActiveRoadmap(data.roadmap);
+    Promise.all([getMyRoadmap(), getMe()])
+      .then(([data, me]) => {
+        if (!mounted) return;
+        if (data?.roadmap) setActiveRoadmap(data.roadmap);
+        setSavedGithubUrl(me?.github_url ?? "");
       })
       .catch((requestError) => {
         if (mounted) {
@@ -41,11 +46,12 @@ export default function AssignmentReviewScreen({
     };
   }, [setActiveRoadmap]);
 
-  const toggleForm = (cycleIndex) => {
+  const toggleForm = (cycleIndex, submission) => {
+    const defaultGithubUrl = submission?.github_url ?? savedGithubUrl;
     setExpandedProject((current) => (current === cycleIndex ? null : cycleIndex));
     setForms((current) => ({
       ...current,
-      [cycleIndex]: current[cycleIndex] ?? createEmptyForm(),
+      [cycleIndex]: current[cycleIndex] ?? createEmptyForm(defaultGithubUrl),
     }));
     setError("");
   };
@@ -55,10 +61,20 @@ export default function AssignmentReviewScreen({
       ...current,
       [cycleIndex]: { ...(current[cycleIndex] ?? createEmptyForm()), [field]: value },
     }));
+    setFormErrors((current) => ({
+      ...current,
+      [cycleIndex]: { ...(current[cycleIndex] ?? {}), [field]: null },
+    }));
   };
 
   const submitProject = async (cycleIndex) => {
     const form = forms[cycleIndex] ?? createEmptyForm();
+    const validationErrors = validateForm(form);
+    if (Object.keys(validationErrors).length) {
+      setFormErrors((current) => ({ ...current, [cycleIndex]: validationErrors }));
+      setError("평가를 실행하려면 표시된 필수 내용을 먼저 입력해주세요.");
+      return;
+    }
     setPendingProject(cycleIndex);
     setError("");
     try {
@@ -76,8 +92,9 @@ export default function AssignmentReviewScreen({
         execution_url: null,
       });
       setActiveRoadmap(result.roadmap);
+      setFormErrors((current) => ({ ...current, [cycleIndex]: {} }));
     } catch (requestError) {
-      setError(requestError.response?.data?.detail ?? "과제 평가를 실행하지 못했습니다.");
+      setError(formatRequestError(requestError, "과제 평가를 실행하지 못했습니다."));
     } finally {
       setPendingProject(null);
     }
@@ -143,7 +160,8 @@ export default function AssignmentReviewScreen({
         return (
           <AssignmentCard
             blueprint={blueprint}
-            form={forms[cycleIndex] ?? createEmptyForm()}
+            form={forms[cycleIndex] ?? createEmptyForm(submission?.github_url ?? savedGithubUrl)}
+            formErrors={formErrors[cycleIndex] ?? {}}
             index={index}
             isExpanded={expandedProject === cycleIndex}
             isPending={pendingProject === cycleIndex}
@@ -152,7 +170,7 @@ export default function AssignmentReviewScreen({
             onAiReview={runAiReview}
             onChange={updateForm}
             onSubmit={submitProject}
-            onToggle={toggleForm}
+            onToggle={() => toggleForm(cycleIndex, submission)}
             submission={submission}
           />
         );
@@ -171,6 +189,7 @@ export default function AssignmentReviewScreen({
 function AssignmentCard({
   blueprint,
   form,
+  formErrors,
   index,
   isExpanded,
   isPending,
@@ -197,7 +216,7 @@ function AssignmentCard({
       <CompactSection title="핵심 구현" items={blueprint.techniques} />
       <CompactSection title="평가 기준" items={blueprint.evaluation} />
 
-      <Pressable style={styles.formToggle} onPress={() => onToggle(cycleIndex)}>
+      <Pressable style={styles.formToggle} onPress={onToggle}>
         <Text style={styles.formToggleText}>
           {isExpanded ? "제출 입력 닫기" : submission ? "수정 제출하기" : "결과물 제출하기"}
         </Text>
@@ -207,6 +226,7 @@ function AssignmentCard({
         <SubmissionForm
           cycleIndex={cycleIndex}
           form={form}
+          formErrors={formErrors}
           isPending={isPending}
           onChange={onChange}
           onSubmit={onSubmit}
@@ -223,20 +243,25 @@ function AssignmentCard({
   );
 }
 
-function SubmissionForm({ cycleIndex, form, isPending, onChange, onSubmit }) {
+function SubmissionForm({ cycleIndex, form, formErrors, isPending, onChange, onSubmit }) {
   return (
     <View style={styles.form}>
       <Text style={styles.notice}>
         구현한 내용과 측정한 결과만 제출해주세요. 입력된 설명과 README 근거를 기준으로 평가합니다.
       </Text>
+      {!!form.githubUrl && (
+        <Text style={styles.savedGithubNotice}>
+          저장된 GitHub 주소가 입력되어 있습니다. 과제 저장소 주소가 다르면 수정해주세요.
+        </Text>
+      )}
       <SubmissionInput label="GitHub URL" value={form.githubUrl} onChangeText={(value) => onChange(cycleIndex, "githubUrl", value)} />
-      <SubmissionInput multiline label="문제 정의" value={form.problemStatement} onChangeText={(value) => onChange(cycleIndex, "problemStatement", value)} />
-      <SubmissionInput multiline label="데이터와 목표 변수" value={form.dataDescription} onChangeText={(value) => onChange(cycleIndex, "dataDescription", value)} />
+      <SubmissionInput error={formErrors.problemStatement} multiline label="문제 정의 *" value={form.problemStatement} onChangeText={(value) => onChange(cycleIndex, "problemStatement", value)} />
+      <SubmissionInput error={formErrors.dataDescription} multiline label="데이터와 목표 변수 *" value={form.dataDescription} onChangeText={(value) => onChange(cycleIndex, "dataDescription", value)} />
       <SubmissionInput label="사용 기술 (쉼표 구분)" value={form.skillsUsed} onChangeText={(value) => onChange(cycleIndex, "skillsUsed", value)} />
       <SubmissionInput label="모델 또는 구현 방식 (쉼표 구분)" value={form.methodsUsed} onChangeText={(value) => onChange(cycleIndex, "methodsUsed", value)} />
       <SubmissionInput label="평가 지표 (쉼표 구분)" value={form.metricsUsed} onChangeText={(value) => onChange(cycleIndex, "metricsUsed", value)} />
-      <SubmissionInput multiline label="측정 결과와 비교 내용" value={form.resultSummary} onChangeText={(value) => onChange(cycleIndex, "resultSummary", value)} />
-      <SubmissionInput multiline label="실패 사례, 한계, 개선 계획" value={form.improvementNotes} onChangeText={(value) => onChange(cycleIndex, "improvementNotes", value)} />
+      <SubmissionInput error={formErrors.resultSummary} multiline label="측정 결과와 비교 내용 *" value={form.resultSummary} onChangeText={(value) => onChange(cycleIndex, "resultSummary", value)} />
+      <SubmissionInput error={formErrors.improvementNotes} multiline label="실패 사례, 한계, 개선 계획 *" value={form.improvementNotes} onChangeText={(value) => onChange(cycleIndex, "improvementNotes", value)} />
       <SubmissionInput multiline label="README 발췌 (실행 방법 포함)" value={form.readmeText} onChangeText={(value) => onChange(cycleIndex, "readmeText", value)} />
       <Pressable disabled={isPending} style={styles.evaluateButton} onPress={() => onSubmit(cycleIndex)}>
         <Text style={styles.evaluateButtonText}>{isPending ? "평가 중..." : "무료 규칙 평가 실행"}</Text>
@@ -245,16 +270,17 @@ function SubmissionForm({ cycleIndex, form, isPending, onChange, onSubmit }) {
   );
 }
 
-function SubmissionInput({ label, multiline = false, onChangeText, value }) {
+function SubmissionInput({ error, label, multiline = false, onChangeText, value }) {
   return (
     <View style={commonStyles.field}>
       <Text style={commonStyles.label}>{label}</Text>
       <TextInput
         multiline={multiline}
         onChangeText={onChangeText}
-        style={[commonStyles.input, multiline && commonStyles.textArea]}
+        style={[commonStyles.input, multiline && commonStyles.textArea, !!error && styles.invalidInput]}
         value={value}
       />
+      {!!error && <Text style={styles.fieldError}>{error}</Text>}
     </View>
   );
 }
@@ -311,9 +337,9 @@ function CompactSection({ title, items }) {
   );
 }
 
-function createEmptyForm() {
+function createEmptyForm(githubUrl = "") {
   return {
-    githubUrl: "",
+    githubUrl,
     problemStatement: "",
     dataDescription: "",
     skillsUsed: "",
@@ -323,6 +349,35 @@ function createEmptyForm() {
     improvementNotes: "",
     readmeText: "",
   };
+}
+
+function validateForm(form) {
+  const errors = {};
+  if (form.problemStatement.trim().length < 10) {
+    errors.problemStatement = "문제 정의를 10자 이상 입력해주세요.";
+  }
+  if (form.dataDescription.trim().length < 5) {
+    errors.dataDescription = "사용 데이터와 목표 변수를 5자 이상 입력해주세요.";
+  }
+  if (form.resultSummary.trim().length < 5) {
+    errors.resultSummary = "측정한 결과를 5자 이상 입력해주세요.";
+  }
+  if (form.improvementNotes.trim().length < 5) {
+    errors.improvementNotes = "한계 또는 개선 계획을 5자 이상 입력해주세요.";
+  }
+  return errors;
+}
+
+function formatRequestError(requestError, fallback) {
+  const detail = requestError.response?.data?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => item.msg)
+      .filter(Boolean)
+      .join(" / ") || fallback;
+  }
+  return fallback;
 }
 
 function splitValues(value) {
@@ -460,6 +515,24 @@ const styles = {
     color: colors.muted,
     fontSize: 13,
     lineHeight: 20,
+  },
+  savedGithubNotice: {
+    backgroundColor: colors.greenSoft,
+    borderRadius: 8,
+    color: colors.green,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 18,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  invalidInput: {
+    borderColor: colors.danger,
+  },
+  fieldError: {
+    color: colors.danger,
+    fontSize: 12,
+    fontWeight: "800",
   },
   evaluateButton: {
     alignItems: "center",

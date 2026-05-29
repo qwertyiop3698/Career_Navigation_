@@ -1,26 +1,36 @@
+import { createDrawerNavigator } from "@react-navigation/drawer";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { BookOpen, CalendarDays, ClipboardCheck, Home, UserRound } from "lucide-react-native";
 import { Pressable, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import AppDrawerContent from "../components/AppDrawerContent";
 import AppHeader from "../components/AppHeader";
 import { AUTH_ENABLED } from "../config";
 import AssignmentReviewScreen from "../screens/AssignmentReviewScreen";
 import CalendarScreen from "../screens/CalendarScreen";
+import CertificationScreen from "../screens/CertificationScreen";
 import HomeScreen from "../screens/HomeScreen";
 import InputScreen from "../screens/InputScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import ResultScreen from "../screens/ResultScreen";
+import { useAuth } from "./AuthContext";
 
 const Tab = createBottomTabNavigator();
-const Stack = createNativeStackNavigator();
+const Drawer = createDrawerNavigator();
 
 export default function AppNavigator() {
+  const { signOut } = useAuth();
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="MainTabs" component={MainTabs} />
-      <Stack.Screen
+    <Drawer.Navigator
+      drawerContent={(props) => <AppDrawerContent {...props} onLogout={signOut} />}
+      screenOptions={{
+        drawerStyle: { backgroundColor: "#F7F1E8", width: 286 },
+        headerShown: false,
+      }}
+    >
+      <Drawer.Screen name="MainTabs" component={MainTabs} />
+      <Drawer.Screen
         name="Input"
         component={InputScreen}
         options={{
@@ -31,7 +41,18 @@ export default function AppNavigator() {
           headerShadowVisible: false,
         }}
       />
-    </Stack.Navigator>
+      <Drawer.Screen
+        name="Certification"
+        component={CertificationScreen}
+        options={{
+          headerShown: true,
+          headerStyle: { backgroundColor: "#F7F1E8" },
+          headerTintColor: "#17483E",
+          headerTitle: "자격증 일정",
+          headerShadowVisible: false,
+        }}
+      />
+    </Drawer.Navigator>
   );
 }
 
@@ -51,7 +72,8 @@ function MainTabs({ navigation }) {
       <AppHeader
         isLoggedIn
         showAuthControls={AUTH_ENABLED}
-        showMenuButton={false}
+        showMenuButton
+        onMenuPress={() => navigation.openDrawer()}
         onProfilePress={() => navigation.navigate("MainTabs", { screen: "Profile" })}
       />
       <Tab.Navigator

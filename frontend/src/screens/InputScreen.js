@@ -184,7 +184,7 @@ export default function InputScreen({
         job_target: careerPath.future_job ?? form.job_target,
         interest_domain: careerPath.interest_domain ?? interestDomain,
       });
-      navigation.navigate("MainTabs", { screen: "Result" });
+      navigation.navigate("MainTabs", { screen: "Home" });
     } catch (requestError) {
       const responseData = requestError.response?.data;
       const detail =

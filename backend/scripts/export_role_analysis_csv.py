@@ -202,18 +202,27 @@ BOILERPLATE_SECTION_PATTERNS = [
 ]
 
 RESPONSIBILITY_PATTERNS = [
+    r"about the role",
+    r"about this role",
     r"responsibilities",
+    r"your responsibilities",
     r"what you.?ll do",
+    r"what you.?ll be doing",
+    r"what you will do",
     r"the impact you.?ll have",
     r"key responsibilities",
 ]
 
 REQUIREMENT_PATTERNS = [
     r"requirements",
+    r"qualifications",
     r"minimum qualifications",
     r"what we look for",
+    r"what we.?re looking for",
+    r"what we are looking for",
     r"who you are",
     r"you have",
+    r"you might thrive in this role if",
 ]
 
 PREFERRED_PATTERNS = [
@@ -321,7 +330,7 @@ def classify_role(posting: ExternalJobPosting) -> str:
 
 
 def clean_description(description: str) -> str:
-    text = html.unescape(description or "")
+    text = normalize_description_text(description or "")
     soup = BeautifulSoup(text, "html.parser")
     for tag in soup(["script", "style"]):
         tag.decompose()
@@ -334,11 +343,37 @@ def clean_description(description: str) -> str:
         if _matches_any(line.lower(), BOILERPLATE_SECTION_PATTERNS):
             break
         lines.append(line)
-    return _truncate(" ".join(lines), 4000)
+    return _truncate("\n".join(lines), 8000)
+
+
+def normalize_description_text(description: str) -> str:
+    text = html.unescape(description or "")
+    replacements = {
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2022": "\n- ",
+        "\u00a0": " ",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    text = re.sub(r"<\s*(br|/p|/li|/h[1-6]|/div)\s*/?>", "\n", text, flags=re.I)
+    text = re.sub(r"<\s*(p|li|h[1-6]|div|ul|ol)\b[^>]*>", "\n", text, flags=re.I)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n\s*\n+", "\n", text)
+    return text.strip()
 
 
 def extract_sections(text: str) -> dict[str, str]:
-    sentences = split_sentences(text)
+    normalized = normalize_description_text(text)
+    structured = extract_sections_by_heading(normalized)
+    if structured:
+        return structured
+
+    sentences = split_sentences(normalized)
     responsibilities = []
     requirements = []
     preferred = []
@@ -369,8 +404,108 @@ def extract_sections(text: str) -> dict[str, str]:
 
 
 def split_sentences(text: str) -> list[str]:
-    parts = re.split(r"(?<=[.!?])\s+", text)
-    return [part.strip() for part in parts if len(part.strip()) > 30]
+    marked = mark_inline_headings(text)
+    parts = re.split(r"(?<=[.!?])\s+|\n+|(?=\s[-*]\s)", marked)
+    return [part.strip(" -*\t") for part in parts if len(part.strip(" -*\t")) > 30]
+
+
+HEADING_GROUPS = [
+    (
+        "responsibilities",
+        [
+            r"about the role",
+            r"about this role",
+            r"what you'?ll do",
+            r"what you'll be doing",
+            r"what you will do",
+            r"responsibilities",
+            r"your responsibilities",
+            r"key responsibilities",
+            r"the impact you'?ll have",
+        ],
+    ),
+    (
+        "requirements",
+        [
+            r"requirements",
+            r"qualifications",
+            r"minimum qualifications",
+            r"what we look for",
+            r"what we're looking for",
+            r"what we are looking for",
+            r"who you are",
+            r"you have",
+            r"you might thrive in this role if",
+        ],
+    ),
+    (
+        "preferred_qualifications",
+        [
+            r"preferred qualifications",
+            r"nice to have",
+            r"bonus",
+            r"preferred",
+        ],
+    ),
+]
+
+
+def extract_sections_by_heading(text: str) -> dict[str, str] | None:
+    marked = mark_inline_headings(text)
+    chunks = split_marked_sections(marked)
+    if not chunks:
+        return None
+    grouped = {"responsibilities": [], "requirements": [], "preferred_qualifications": []}
+    current = ""
+    for chunk in chunks:
+        heading = classify_heading(chunk)
+        if heading:
+            current = heading
+            content = remove_heading(chunk)
+        else:
+            content = chunk
+        if current and content:
+            grouped[current].append(content)
+    if not any(grouped.values()):
+        return None
+    return {
+        "responsibilities": _truncate(" ".join(grouped["responsibilities"]), 1600),
+        "requirements": _truncate(" ".join(grouped["requirements"]), 1600),
+        "preferred_qualifications": _truncate(" ".join(grouped["preferred_qualifications"]), 1000),
+    }
+
+
+def mark_inline_headings(text: str) -> str:
+    marked = text
+    all_headings = [pattern for _, patterns in HEADING_GROUPS for pattern in patterns]
+    for pattern in sorted(all_headings, key=len, reverse=True):
+        marked = re.sub(
+            rf"(?<![A-Za-z])({pattern})(\s*:)?",
+            lambda match: "\n" + match.group(1) + (match.group(2) or "") + "\n",
+            marked,
+            flags=re.I,
+        )
+    return re.sub(r"\n\s*\n+", "\n", marked).strip()
+
+
+def split_marked_sections(text: str) -> list[str]:
+    return [part.strip(" -*\t") for part in re.split(r"\n+", text) if len(part.strip(" -*\t")) > 2]
+
+
+def classify_heading(text: str) -> str:
+    lowered = text.lower().strip(" :")
+    for field, patterns in HEADING_GROUPS:
+        if any(re.fullmatch(pattern, lowered, flags=re.I) for pattern in patterns):
+            return field
+    return ""
+
+
+def remove_heading(text: str) -> str:
+    cleaned = text.strip()
+    for _, patterns in HEADING_GROUPS:
+        for pattern in patterns:
+            cleaned = re.sub(rf"^{pattern}\s*:?\s*", "", cleaned, flags=re.I)
+    return cleaned.strip(" :-")
 
 
 def _matches_any(value: str, patterns: list[str]) -> bool:

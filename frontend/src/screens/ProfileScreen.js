@@ -18,6 +18,7 @@ export default function ProfileScreen({
   const [error, setError] = useState("");
   const [githubUrl, setGithubUrl] = useState("");
   const [isSavingGithub, setIsSavingGithub] = useState(false);
+  const [isEditingGithub, setIsEditingGithub] = useState(true);
   const [githubMessage, setGithubMessage] = useState("");
 
   useEffect(() => {
@@ -35,6 +36,7 @@ export default function ProfileScreen({
         if (!isMounted) return;
         setUser(me);
         setGithubUrl(me.github_url ?? "");
+        setIsEditingGithub(!me.github_url);
         setProgress(progressData);
         if (roadmapData?.roadmap) {
           setActiveRoadmap(roadmapData.roadmap);
@@ -62,7 +64,8 @@ export default function ProfileScreen({
       const result = await updateGithubProfile({ github_url: githubUrl.trim() || null });
       setGithubUrl(result.github_url ?? "");
       setUser((current) => ({ ...current, github_url: result.github_url }));
-      setGithubMessage("GitHub 주소를 저장했습니다.");
+      setIsEditingGithub(!result.github_url);
+      setGithubMessage(result.github_url ? "GitHub 주소를 저장했습니다." : "GitHub 주소를 삭제했습니다.");
     } catch (requestError) {
       const detail = requestError.response?.data?.detail;
       setError(typeof detail === "string" ? detail : "GitHub 주소를 저장하지 못했습니다.");
@@ -99,32 +102,60 @@ export default function ProfileScreen({
             <InfoRow label="이메일" value={user?.email || "-"} />
             <View style={styles.githubBox}>
               <Text style={styles.infoLabel}>GitHub 주소</Text>
-              <TextInput
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="url"
-                onChangeText={setGithubUrl}
-                placeholder="https://github.com/username"
-                placeholderTextColor="#8D948D"
-                style={commonStyles.input}
-                value={githubUrl}
-              />
-              <View style={styles.githubActions}>
-                <Pressable
-                  disabled={isSavingGithub}
-                  onPress={saveGithubUrl}
-                  style={styles.saveGithubButton}
-                >
-                  <Text style={styles.saveGithubText}>
-                    {isSavingGithub ? "저장 중..." : "저장"}
-                  </Text>
-                </Pressable>
-                {!!user?.github_url && (
-                  <Pressable onPress={() => Linking.openURL(user.github_url)}>
-                    <Text style={styles.openGithubText}>열기</Text>
-                  </Pressable>
-                )}
-              </View>
+              {!!user?.github_url && !isEditingGithub ? (
+                <>
+                  <Text selectable style={styles.infoValue}>{user.github_url}</Text>
+                  <View style={styles.githubActions}>
+                    <Pressable
+                      onPress={() => {
+                        setGithubMessage("");
+                        setIsEditingGithub(true);
+                      }}
+                      style={styles.editGithubButton}
+                    >
+                      <Text style={styles.editGithubText}>수정하기</Text>
+                    </Pressable>
+                    <Pressable onPress={() => Linking.openURL(user.github_url)}>
+                      <Text style={styles.openGithubText}>열기</Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <TextInput
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
+                    onChangeText={setGithubUrl}
+                    placeholder="https://github.com/username"
+                    placeholderTextColor="#8D948D"
+                    style={commonStyles.input}
+                    value={githubUrl}
+                  />
+                  <View style={styles.githubActions}>
+                    <Pressable
+                      disabled={isSavingGithub}
+                      onPress={saveGithubUrl}
+                      style={styles.saveGithubButton}
+                    >
+                      <Text style={styles.saveGithubText}>
+                        {isSavingGithub ? "저장 중..." : "저장"}
+                      </Text>
+                    </Pressable>
+                    {!!user?.github_url && (
+                      <Pressable
+                        onPress={() => {
+                          setGithubUrl(user.github_url);
+                          setIsEditingGithub(false);
+                          setGithubMessage("");
+                        }}
+                      >
+                        <Text style={styles.openGithubText}>취소</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                </>
+              )}
               {!!githubMessage && <Text style={styles.savedText}>{githubMessage}</Text>}
             </View>
           </>
@@ -233,6 +264,22 @@ const styles = {
     minHeight: 42,
     minWidth: 94,
     paddingHorizontal: 14,
+  },
+  editGithubButton: {
+    alignItems: "center",
+    backgroundColor: colors.greenSoft,
+    borderColor: "#C9DED4",
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 42,
+    minWidth: 94,
+    paddingHorizontal: 14,
+  },
+  editGithubText: {
+    color: colors.green,
+    fontSize: 14,
+    fontWeight: "900",
   },
   saveGithubText: {
     color: "#FFFFFF",
