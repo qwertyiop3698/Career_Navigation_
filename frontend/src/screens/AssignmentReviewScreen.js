@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import {
   getMe,
@@ -82,13 +82,13 @@ export default function AssignmentReviewScreen({
         cycle_index: cycleIndex,
         github_url: form.githubUrl.trim() || null,
         problem_statement: form.problemStatement.trim(),
-        data_description: form.dataDescription.trim(),
+        data_description: buildDataDescription(form),
         skills_used: splitValues(form.skillsUsed),
         methods_used: splitValues(form.methodsUsed),
-        metrics_used: splitValues(form.metricsUsed),
+        metrics_used: inferMetricItems(form.resultSummary),
         result_summary: form.resultSummary.trim(),
         improvement_notes: form.improvementNotes.trim(),
-        readme_text: form.readmeText.trim() || null,
+        readme_text: null,
         execution_url: null,
       });
       setActiveRoadmap(result.roadmap);
@@ -101,16 +101,29 @@ export default function AssignmentReviewScreen({
   };
 
   const runAiReview = async (submissionId) => {
-    setPendingAiReview(submissionId);
-    setError("");
-    try {
-      const result = await requestProjectAiReview(submissionId);
-      setActiveRoadmap(result.roadmap);
-    } catch (requestError) {
-      setError(requestError.response?.data?.detail ?? "AI 리뷰를 실행하지 못했습니다.");
-    } finally {
-      setPendingAiReview(null);
-    }
+    Alert.alert(
+      "AI 리뷰 실행",
+      "OpenAI API를 1회 호출합니다. 점수는 바뀌지 않고, 제출한 증빙 텍스트를 기준으로 엄격한 보완 피드백만 생성합니다.",
+      [
+        { text: "취소", style: "cancel" },
+        {
+          text: "실행",
+          style: "destructive",
+          onPress: async () => {
+            setPendingAiReview(submissionId);
+            setError("");
+            try {
+              const result = await requestProjectAiReview(submissionId);
+              setActiveRoadmap(result.roadmap);
+            } catch (requestError) {
+              setError(requestError.response?.data?.detail ?? "AI 리뷰를 실행하지 못했습니다.");
+            } finally {
+              setPendingAiReview(null);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const blueprints = activeRoadmap?.project_blueprints ?? [];
@@ -133,7 +146,7 @@ export default function AssignmentReviewScreen({
             과제검증
           </Text>
           <Text style={commonStyles.bodyText}>
-            먼저 분석을 실행하면 직무에 맞는 프로젝트 과제와 평가 기준이 생성됩니다.
+            먼저 분석을 실행하면 직무에 맞는 프로젝트 과제와 앱이 제공하는 검증 기준이 생성됩니다.
           </Text>
           <Pressable style={commonStyles.primaryButton} onPress={() => navigation.navigate("Input")}>
             <Text style={commonStyles.primaryButtonText}>새로 분석하기</Text>
@@ -150,7 +163,7 @@ export default function AssignmentReviewScreen({
         <Text style={styles.headerTitle}>{activeRoadmap.job_target}</Text>
         <Text style={styles.headerScore}>{evidenceScore} / 25점</Text>
         <Text style={styles.headerCopy}>
-          프로젝트 증명도는 제출한 결과물의 근거 충실도를 평가해 지원 준비 점수에 반영합니다.
+          프로젝트 증명도는 앱이 제공한 기준으로 결과물의 증빙 충실도를 평가해 지원 준비 점수에 반영합니다.
         </Text>
       </View>
 
@@ -214,7 +227,7 @@ function AssignmentCard({
       </View>
       <Text style={commonStyles.bodyText}>{blueprint.problem}</Text>
       <CompactSection title="핵심 구현" items={blueprint.techniques} />
-      <CompactSection title="평가 기준" items={blueprint.evaluation} />
+      <CompactSection title="앱 제공 검증 기준" items={blueprint.evaluation} />
 
       <Pressable style={styles.formToggle} onPress={onToggle}>
         <Text style={styles.formToggleText}>
@@ -247,22 +260,19 @@ function SubmissionForm({ cycleIndex, form, formErrors, isPending, onChange, onS
   return (
     <View style={styles.form}>
       <Text style={styles.notice}>
-        구현한 내용과 측정한 결과만 제출해주세요. 입력된 설명과 README 근거를 기준으로 평가합니다.
+        GitHub 링크에서 README만 자동으로 가져와 증빙으로 사용합니다. 저장소 코드를 실행하거나 코드리뷰를 하지는 않습니다.
       </Text>
       {!!form.githubUrl && (
         <Text style={styles.savedGithubNotice}>
           저장된 GitHub 주소가 입력되어 있습니다. 과제 저장소 주소가 다르면 수정해주세요.
         </Text>
       )}
-      <SubmissionInput label="GitHub URL" value={form.githubUrl} onChangeText={(value) => onChange(cycleIndex, "githubUrl", value)} />
-      <SubmissionInput error={formErrors.problemStatement} multiline label="문제 정의 *" value={form.problemStatement} onChangeText={(value) => onChange(cycleIndex, "problemStatement", value)} />
-      <SubmissionInput error={formErrors.dataDescription} multiline label="데이터와 목표 변수 *" value={form.dataDescription} onChangeText={(value) => onChange(cycleIndex, "dataDescription", value)} />
+      <SubmissionInput label="GitHub URL (README 자동 수집)" value={form.githubUrl} onChangeText={(value) => onChange(cycleIndex, "githubUrl", value)} />
+      <SubmissionInput error={formErrors.problemStatement} multiline label="이 프로젝트가 해결한 문제 *" value={form.problemStatement} onChangeText={(value) => onChange(cycleIndex, "problemStatement", value)} />
       <SubmissionInput label="사용 기술 (쉼표 구분)" value={form.skillsUsed} onChangeText={(value) => onChange(cycleIndex, "skillsUsed", value)} />
       <SubmissionInput label="모델 또는 구현 방식 (쉼표 구분)" value={form.methodsUsed} onChangeText={(value) => onChange(cycleIndex, "methodsUsed", value)} />
-      <SubmissionInput label="평가 지표 (쉼표 구분)" value={form.metricsUsed} onChangeText={(value) => onChange(cycleIndex, "metricsUsed", value)} />
       <SubmissionInput error={formErrors.resultSummary} multiline label="측정 결과와 비교 내용 *" value={form.resultSummary} onChangeText={(value) => onChange(cycleIndex, "resultSummary", value)} />
       <SubmissionInput error={formErrors.improvementNotes} multiline label="실패 사례, 한계, 개선 계획 *" value={form.improvementNotes} onChangeText={(value) => onChange(cycleIndex, "improvementNotes", value)} />
-      <SubmissionInput multiline label="README 발췌 (실행 방법 포함)" value={form.readmeText} onChangeText={(value) => onChange(cycleIndex, "readmeText", value)} />
       <Pressable disabled={isPending} style={styles.evaluateButton} onPress={() => onSubmit(cycleIndex)}>
         <Text style={styles.evaluateButtonText}>{isPending ? "평가 중..." : "무료 규칙 평가 실행"}</Text>
       </Pressable>
@@ -296,6 +306,10 @@ function EvaluationPanel({ evaluation, isReviewPending, onAiReview }) {
       <Text style={styles.evidencePoints}>
         지원 준비 점수에 프로젝트 증명도 +{evaluation.project_evidence_points}점 반영
       </Text>
+      <CompactScoreBreakdown breakdown={evaluation.score_breakdown} />
+      {(evaluation.passed_checks ?? []).slice(0, 5).map((item) => (
+        <Text key={item} style={styles.passedText}>확인: {item}</Text>
+      ))}
       {(evaluation.critical_issues ?? []).map((issue) => (
         <Text key={issue} style={styles.issueText}>- {issue}</Text>
       ))}
@@ -305,7 +319,7 @@ function EvaluationPanel({ evaluation, isReviewPending, onAiReview }) {
       {!aiReview && (
         <>
           <Text style={styles.aiNotice}>
-            AI 리뷰는 요청할 때만 실행되며 API 비용이 발생합니다. 점수를 올리지 않고 수정할 근거를 검토합니다.
+            AI 리뷰는 요청할 때만 OpenAI API를 1회 호출합니다. 점수는 올리지 않고, 제출한 증빙 텍스트에서 확인되지 않는 주장과 수정 우선순위만 검토합니다.
           </Text>
           <Pressable disabled={isReviewPending} style={styles.aiButton} onPress={onAiReview}>
             <Text style={styles.aiButtonText}>
@@ -327,6 +341,21 @@ function EvaluationPanel({ evaluation, isReviewPending, onAiReview }) {
   );
 }
 
+function CompactScoreBreakdown({ breakdown }) {
+  const entries = Object.entries(breakdown ?? {});
+  if (!entries.length) return null;
+  return (
+    <View style={styles.breakdownBox}>
+      {entries.map(([label, score]) => (
+        <View key={label} style={styles.breakdownRow}>
+          <Text style={styles.breakdownLabel}>{label}</Text>
+          <Text style={styles.breakdownValue}>{score}점</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function CompactSection({ title, items }) {
   if (!(items ?? []).length) return null;
   return (
@@ -341,13 +370,10 @@ function createEmptyForm(githubUrl = "") {
   return {
     githubUrl,
     problemStatement: "",
-    dataDescription: "",
     skillsUsed: "",
     methodsUsed: "",
-    metricsUsed: "",
     resultSummary: "",
     improvementNotes: "",
-    readmeText: "",
   };
 }
 
@@ -355,9 +381,6 @@ function validateForm(form) {
   const errors = {};
   if (form.problemStatement.trim().length < 10) {
     errors.problemStatement = "문제 정의를 10자 이상 입력해주세요.";
-  }
-  if (form.dataDescription.trim().length < 5) {
-    errors.dataDescription = "사용 데이터와 목표 변수를 5자 이상 입력해주세요.";
   }
   if (form.resultSummary.trim().length < 5) {
     errors.resultSummary = "측정한 결과를 5자 이상 입력해주세요.";
@@ -382,6 +405,38 @@ function formatRequestError(requestError, fallback) {
 
 function splitValues(value) {
   return String(value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function buildDataDescription(form) {
+  const skills = splitValues(form.skillsUsed);
+  const methods = splitValues(form.methodsUsed);
+  const parts = [
+    "GitHub README 자동 수집 결과와 사용자가 입력한 핵심 설명을 기준으로 평가합니다.",
+    skills.length ? `사용 기술: ${skills.join(", ")}` : "",
+    methods.length ? `구현 방식: ${methods.join(", ")}` : "",
+  ].filter(Boolean);
+  return parts.join(" ");
+}
+
+function inferMetricItems(resultSummary) {
+  const text = String(resultSummary ?? "");
+  const metrics = [];
+  const metricPatterns = [
+    ["정확도", /정확도|accuracy/i],
+    ["F1", /\bF1\b|f1-score/i],
+    ["RMSE", /\bRMSE\b/i],
+    ["MAE", /\bMAE\b/i],
+    ["응답 시간", /응답\s*시간|latency|ms\b/i],
+    ["문서 수", /문서|공고|후보|건/i],
+    ["비용", /비용|cost|달러|\\$/i],
+    ["누락 건수", /누락|missing|0건/i],
+    ["비교 결과", /비교|baseline|베이스라인/i],
+  ];
+  for (const [label, pattern] of metricPatterns) {
+    if (pattern.test(text)) metrics.push(label);
+  }
+  if (!metrics.length && /\d/.test(text)) metrics.push("수치 측정 결과");
+  return metrics.slice(0, 8);
 }
 
 function statusLabel(status) {
@@ -568,6 +623,36 @@ const styles = {
     color: colors.green,
     fontSize: 13,
     fontWeight: "900",
+  },
+  breakdownBox: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#D6E4DD",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 6,
+    padding: 10,
+  },
+  breakdownRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  breakdownLabel: {
+    color: colors.text,
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  breakdownValue: {
+    color: colors.green,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  passedText: {
+    color: colors.green,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 18,
   },
   issueText: {
     color: colors.danger,

@@ -1,6 +1,7 @@
 import json
 import re
 from datetime import datetime
+from urllib.parse import urlparse
 
 import requests
 from fastapi import HTTPException, status
@@ -16,6 +17,23 @@ DEFAULT_MONTHLY_BUDGET_USD = 1.0
 DEFAULT_MAX_OUTPUT_TOKENS = 900
 DEFAULT_INPUT_PRICE_PER_MILLION = 0.75
 DEFAULT_OUTPUT_PRICE_PER_MILLION = 4.50
+TECHNIQUE_STOPWORDS = {
+    "기반",
+    "또는",
+    "비교",
+    "모델",
+    "분석",
+    "구현",
+    "처리",
+    "프로젝트",
+    "평가",
+    "엔진",
+    "설계",
+    "구조",
+    "환경",
+    "서비스",
+    "기술",
+}
 
 
 def submit_project_for_evaluation(
@@ -44,6 +62,10 @@ def submit_project_for_evaluation(
 
     for field, value in _payload_dict(payload).items():
         setattr(submission, field, value)
+    if submission.github_url and not submission.readme_text:
+        fetched_readme = _fetch_github_readme_excerpt(submission.github_url)
+        if fetched_readme:
+            submission.readme_text = f"[GitHub README 자동 수집]\n{fetched_readme}"
     submission.project_title = blueprint["title"]
     submission.job_target = roadmap.job_target
     db.flush()
@@ -222,14 +244,14 @@ def _evaluate_rules(submission: ProjectSubmission, blueprint: dict) -> dict:
     problem_score = 0
     if len(submission.problem_statement.strip()) >= 60:
         problem_score += 8
-        passed.append("문제 정의가 검토 가능한 길이로 작성되었습니다.")
+        passed.append("문제 정의: 대상 사용자, 해결하려는 문제, 프로젝트 목적을 검토할 수 있는 길이로 작성되었습니다.")
     else:
-        missing.append("문제 정의에 대상, 목표, 활용 판단을 구체적으로 작성하세요.")
+        missing.append("문제 정의: 대상 사용자, 해결하려는 문제, 프로젝트 목표를 한 문단으로 구체화하세요.")
     if len(submission.data_description.strip()) >= 30:
         problem_score += 4
-        passed.append("사용 데이터의 설명이 제출되었습니다.")
+        passed.append("데이터 설명: 사용 데이터 또는 검증 대상이 제출 내용에서 확인됩니다.")
     else:
-        missing.append("데이터 출처, 주요 변수, 목표 변수를 적어주세요.")
+        missing.append("데이터 설명: 데이터 출처, 주요 필드, 평가 대상 또는 목표 변수를 적어주세요.")
     if _contains_any(submission.problem_statement, ["예측", "분석", "목표", "문제", "개선", "분류", "회귀", "구현"]):
         problem_score += 3
     breakdown["문제 정의"] = problem_score
@@ -250,78 +272,92 @@ def _evaluate_rules(submission: ProjectSubmission, blueprint: dict) -> dict:
     implementation_score = 0
     if len(submission.skills_used) >= 2:
         implementation_score += 5
-        passed.append("적용 기술 목록이 제출되었습니다.")
+        passed.append(f"핵심 구현: 사용 기술 {len(submission.skills_used)}개가 제출되었습니다.")
     else:
-        missing.append("실제로 사용한 기술을 최소 2개 적어주세요.")
+        missing.append("핵심 구현: 실제 사용한 기술을 최소 2개 이상 입력하세요.")
     if len(submission.methods_used) >= 2:
         implementation_score += 10
-        passed.append("모델 또는 구현 방식을 비교할 수 있습니다.")
+        passed.append("핵심 구현: 구현 방식이 2개 이상 제시되어 구조를 검토할 수 있습니다.")
     else:
-        missing.append("베이스라인과 비교 대상을 포함해 구현 방식을 적어주세요.")
+        missing.append("핵심 구현: API, 데이터 흐름, 모델, 화면, 배포 등 실제 구현 방식을 2개 이상 적어주세요.")
         critical.append("핵심 구현 방식의 증거가 부족합니다.")
     method_points = min(15, len(matched_methods) * 5)
     implementation_score += method_points
     if matched_methods:
-        passed.append(f"권장 구현 기술 중 {len(matched_methods)}개가 제출 내용에서 확인됩니다.")
+        passed.append(
+            f"핵심 구현: 앱이 제안한 구현 기술 중 {len(matched_methods)}개가 제출 내용에서 직접 확인됩니다."
+        )
     else:
-        missing.append("추천 프로젝트의 핵심 기술이 결과물 설명에서 확인되지 않습니다.")
+        missing.append("핵심 구현: 앱이 제안한 핵심 기술이 제출 설명 또는 README 근거에서 확인되지 않습니다.")
     breakdown["핵심 구현"] = implementation_score
 
     validation_score = 0
     if submission.metrics_used:
         validation_score += 8
-        passed.append("평가 지표가 기재되었습니다.")
+        passed.append(f"검증: 측정 지표 또는 결과 항목 {len(submission.metrics_used)}개가 기재되었습니다.")
+    elif re.search(r"\d", submission.result_summary):
+        validation_score += 8
+        passed.append("결과 요약에서 수치 기반 측정 결과가 확인됩니다.")
     else:
-        missing.append("수치로 확인할 평가 지표를 제출하세요.")
-        critical.append("평가 지표가 없습니다.")
+        missing.append("결과 요약에 수치로 확인할 측정 결과를 포함하세요.")
+        critical.append("측정 결과 근거가 없습니다.")
     if re.search(r"\d", submission.result_summary):
         validation_score += 5
-        passed.append("결과 요약에 수치 결과가 포함되었습니다.")
+        passed.append("검증: 결과 요약에 수치 결과가 포함되어 있습니다.")
     else:
-        missing.append("결과 요약에 실제 측정값을 포함하세요.")
+        missing.append("검증: 결과 요약에 실제 측정값, 건수, 점수, 시간, 비용 중 하나를 포함하세요.")
     validation_text = f"{submission.result_summary} {submission.improvement_notes} {submission.readme_text or ''}"
     for phrase in ["baseline", "베이스라인", "비교", "cross-validation", "교차검증", "오차", "실패", "test", "검증"]:
         if phrase.lower() in validation_text.lower():
             validation_score += 12
-            passed.append("비교 또는 검증 과정이 설명되어 있습니다.")
+            passed.append("검증: 비교, 테스트, 실패 분석, 베이스라인 중 하나가 설명되어 있습니다.")
             break
     else:
-        missing.append("베이스라인 비교, 검증 방식, 실패 분석 중 하나를 제시하세요.")
+        missing.append("검증: 베이스라인 비교, 테스트 방법, 실패 사례 분석 중 하나를 추가하세요.")
     breakdown["검증"] = min(validation_score, 25)
 
     explanation_score = 0
     if len(submission.result_summary.strip()) >= 70:
         explanation_score += 7
-        passed.append("결과 해석을 검토할 수 있습니다.")
+        passed.append("해석: 결과가 무엇을 의미하는지 검토할 수 있는 설명이 있습니다.")
     else:
-        missing.append("결과가 의미하는 바를 더 구체적으로 설명하세요.")
+        missing.append("해석: 측정 결과가 직무 역량 증명에 어떤 의미가 있는지 설명하세요.")
     if len(submission.improvement_notes.strip()) >= 40:
         explanation_score += 8
-        passed.append("한계 또는 개선 계획이 작성되었습니다.")
+        passed.append("해석: 한계 또는 다음 개선 계획이 작성되었습니다.")
     else:
-        missing.append("실패 사례, 한계, 다음 개선 실험을 작성하세요.")
+        missing.append("해석: 실패 사례, 한계, 다음 개선 실험을 구체적으로 작성하세요.")
     breakdown["해석 및 개선"] = explanation_score
 
     delivery_score = 0
-    if submission.github_url and submission.github_url.startswith(("https://github.com/", "http://github.com/")):
-        delivery_score += 5
-        passed.append("GitHub 주소가 제출되었습니다.")
-    else:
-        missing.append("검토 가능한 GitHub 저장소 주소를 제출하세요.")
-        critical.append("코드 저장소 링크가 없습니다.")
     if submission.readme_text and len(submission.readme_text.strip()) >= 160:
-        delivery_score += 5
-        passed.append("README 근거 텍스트가 포함되었습니다.")
+        delivery_score += 8
+        passed.append("전달 가능성: GitHub README 또는 제출 증빙 텍스트가 평가 입력에 포함되었습니다.")
     else:
-        missing.append("README의 문제, 실행법, 결과 부분을 붙여 넣어주세요.")
+        missing.append("README, PDF, 캡처에서 확인 가능한 문제, 실행법, 결과 내용을 붙여 넣어주세요.")
+        if not submission.github_url and not submission.execution_url:
+            critical.append("검토 가능한 결과물 증빙이 부족합니다.")
     if _contains_any(submission.readme_text or "", ["실행", "install", "pip", "npm", "requirements", "docker", "사용법"]):
         delivery_score += 5
-        passed.append("실행 또는 재현 절차가 확인됩니다.")
+        passed.append("전달 가능성: 실행 또는 재현 절차가 README/증빙에서 확인됩니다.")
     else:
         missing.append("설치 및 실행 방법을 README에 명시하세요.")
+    if submission.github_url and submission.github_url.startswith(("https://github.com/", "http://github.com/")):
+        delivery_score += 2
+        passed.append("전달 가능성: GitHub 주소가 제출되어 README 자동 수집 대상으로 사용됩니다.")
+    elif submission.execution_url:
+        delivery_score += 2
+        passed.append("실행 URL 또는 결과물 URL이 보조 증빙으로 제출되었습니다.")
     breakdown["전달 가능성"] = delivery_score
 
     total = min(100, sum(breakdown.values()))
+    scope_cap = _evidence_scope_score_cap(submission)
+    if scope_cap < total:
+        total = scope_cap
+        missing.append(
+            "평가 범위: README와 입력 텍스트만으로는 코드 실행 성공을 확정할 수 없습니다. "
+            "실행 로그, 테스트 통과 결과, 캡처, 배포 URL 중 하나를 추가하면 신뢰도가 올라갑니다."
+        )
     if total >= 75 and not critical:
         evaluation_status = "evidence_ready"
     elif total >= 45:
@@ -347,8 +383,10 @@ def _technique_is_evidenced(technique: str, submitted_text: str) -> bool:
     meaningful = [
         token
         for token in tokens
-        if token.lower() not in {"기반", "또는", "비교", "모델", "분석", "구현", "처리"}
+        if token.lower() not in TECHNIQUE_STOPWORDS
     ]
+    if not meaningful:
+        return False
     return any(token.lower() in lowered for token in meaningful)
 
 
@@ -357,19 +395,94 @@ def _contains_any(value: str, keywords: list[str]) -> bool:
     return any(keyword.lower() in lowered for keyword in keywords)
 
 
+def _evidence_scope_score_cap(submission: ProjectSubmission) -> int:
+    text = " ".join(
+        [
+            submission.result_summary or "",
+            submission.improvement_notes or "",
+            submission.readme_text or "",
+            submission.execution_url or "",
+        ]
+    ).lower()
+    has_readme = bool((submission.readme_text or "").strip())
+    has_execution_proof = any(
+        keyword in text
+        for keyword in [
+            "실행 로그",
+            "테스트 통과",
+            "테스트 결과",
+            "성공 로그",
+            "배포 url",
+            "배포 링크",
+            "실행 캡처",
+            "스크린샷",
+            "pytest",
+            "npm test",
+            "curl",
+            "ci",
+            "passed",
+            "screenshot",
+        ]
+    )
+    has_measured_result = bool(re.search(r"\d", submission.result_summary or ""))
+
+    if has_readme and has_execution_proof and has_measured_result:
+        return 100
+    if has_readme and has_measured_result:
+        return 90
+    if has_readme:
+        return 82
+    return 70
+
+
+def _fetch_github_readme_excerpt(github_url: str, max_chars: int = 12000) -> str | None:
+    parsed = urlparse(github_url.strip())
+    if parsed.netloc.lower() != "github.com":
+        return None
+
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) < 2:
+        return None
+
+    owner, repo = parts[0], parts[1].removesuffix(".git")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", owner) or not re.fullmatch(r"[A-Za-z0-9_.-]+", repo):
+        return None
+
+    candidates = [
+        f"https://raw.githubusercontent.com/{owner}/{repo}/main/README.md",
+        f"https://raw.githubusercontent.com/{owner}/{repo}/master/README.md",
+        f"https://raw.githubusercontent.com/{owner}/{repo}/main/readme.md",
+        f"https://raw.githubusercontent.com/{owner}/{repo}/master/readme.md",
+    ]
+    for url in candidates:
+        try:
+            response = requests.get(url, timeout=(5, 12))
+        except requests.RequestException:
+            continue
+        if response.status_code != 200:
+            continue
+        text = response.text.strip()
+        if not text:
+            continue
+        return text[:max_chars]
+    return None
+
+
 def _build_ai_prompt(submission: ProjectSubmission) -> str:
     evaluation = submission.evaluation
     content = {
         "직무": submission.job_target,
         "프로젝트": submission.project_title,
+        "GitHub_URL_선택증빙": submission.github_url or "",
+        "실행_URL_선택증빙": submission.execution_url or "",
         "문제정의": submission.problem_statement,
         "데이터": submission.data_description,
         "기술": submission.skills_used,
         "모델_구현방식": submission.methods_used,
-        "지표": submission.metrics_used,
+        "측정_결과_항목": submission.metrics_used,
         "결과": submission.result_summary,
         "한계_개선": submission.improvement_notes,
-        "README_발췌": submission.readme_text or "",
+        "README_PDF_캡처_증빙_발췌": submission.readme_text or "",
         "규칙평가": {
             "점수": evaluation.rule_score,
             "통과": evaluation.passed_checks,
@@ -386,6 +499,8 @@ def _review_instructions() -> str:
         "제출 내용에 적힌 증거만 인정하고 추측하지 마세요. 규칙 평가 점수를 변경하거나 "
         "새 점수를 제안하지 마세요. 칭찬, 응원, 과장된 긍정 표현은 쓰지 마세요. "
         "반대로 비하, 조롱, 인격 평가, 막연한 혹평도 금지합니다. "
+        "GitHub URL이나 실행 URL은 제출 여부만 확인하고, 실제 링크 내용을 열람했다고 말하지 마세요. "
+        "README, PDF, 캡처 증빙 발췌에 없는 내용은 확인된 사실로 취급하지 마세요. "
         "문제는 관찰 가능한 사실로 말하고, 각 보완 지시는 사용자가 바로 수정할 수 있게 "
         "구체적인 산출물 또는 검증 방법을 포함하세요."
     )

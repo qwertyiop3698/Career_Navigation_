@@ -2,12 +2,13 @@
   "name": "job-compass-mobile",
   "version": "0.1.0",
   "private": true,
-  "main": "node_modules/expo/AppEntry.js",
+  "main": "index.js",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
+    "prestart": "node -e \"require('fs').mkdirSync('.metro-temp',{recursive:true});require('fs').mkdirSync('.metro-cache',{recursive:true})\"",
+    "start": "set TMP=.metro-temp&& set TEMP=.metro-temp&& set EXPO_NO_DEPENDENCY_VALIDATION=1&& expo start --clear",
+    "android": "set TMP=.metro-temp&& set TEMP=.metro-temp&& set EXPO_NO_DEPENDENCY_VALIDATION=1&& expo start --android",
+    "ios": "set TMP=.metro-temp&& set TEMP=.metro-temp&& set EXPO_NO_DEPENDENCY_VALIDATION=1&& expo start --ios",
+    "web": "set TMP=.metro-temp&& set TEMP=.metro-temp&& set EXPO_NO_DEPENDENCY_VALIDATION=1&& expo start --web"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
@@ -23,9 +24,10 @@
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-gesture-handler": "~2.28.0",
-    "react-native-reanimated": "~4.1.1",
+    "react-native-reanimated": "4.1.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
-    "react-native-svg": "15.12.1"
+    "react-native-svg": "15.12.1",
+    "react-native-worklets": "0.5.1"
   }
 }

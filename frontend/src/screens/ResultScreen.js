@@ -67,9 +67,14 @@ export default function ResultScreen({
     activeRoadmap?.interest_domain ?? analysisResult?.interest_domain ?? "-";
 
   return (
-    <ScrollView contentContainerStyle={screenPadding(contentBottomPadding, isSmallScreen)}>
+    <ScrollView
+      contentContainerStyle={screenPadding(contentBottomPadding, isSmallScreen)}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={[styles.detailHeader, isSmallScreen && styles.compactDetailHeader]}>
-        <Text style={styles.detailEyebrow}>분석 상세</Text>
+        <View style={styles.detailTopRow}>
+          <Text style={styles.detailEyebrow}>분석 상세</Text>
+        </View>
         <Text style={[styles.detailTitle, isSmallScreen && styles.compactDetailTitle]}>
           {targetRole}
         </Text>
@@ -180,7 +185,9 @@ function ListCard({ title, items, isSmallScreen, chipStyle, chipTextStyle }) {
         <View style={commonStyles.chipWrap}>
           {items.map((item, index) => (
             <View key={`item-${item}-${index}`} style={[commonStyles.chip, chipStyle]}>
-              <Text style={[styles.chipText, chipTextStyle]}>{item}</Text>
+              <Text numberOfLines={3} style={[styles.chipText, chipTextStyle]}>
+                {item}
+              </Text>
             </View>
           ))}
         </View>
@@ -206,6 +213,10 @@ function CapabilityRow({ diagnostic }) {
 }
 
 function PriorityGapRow({ diagnostic, index }) {
+  const marketScore = Number.isFinite(Number(diagnostic.market_score))
+    ? Math.round(Number(diagnostic.market_score))
+    : 0;
+
   return (
     <View style={styles.diagnosticRow}>
       <View style={styles.diagnosticHeader}>
@@ -213,7 +224,7 @@ function PriorityGapRow({ diagnostic, index }) {
         <Text style={styles.priorityPill}>{diagnostic.status}</Text>
       </View>
       <Text style={styles.marketText}>
-        현재 {diagnostic.level_label} / 수요 근거 {Math.round(diagnostic.market_score)}점
+        현재 {diagnostic.level_label} / 수요 근거 {marketScore}점
       </Text>
       <Text style={commonStyles.bodyText}>{diagnostic.evidence_reason}</Text>
       <Text style={styles.actionText}>다음 행동: {diagnostic.recommended_action}</Text>
@@ -227,7 +238,7 @@ function ProjectBlueprint({ blueprint, index }) {
     <View style={styles.projectBlueprint}>
       <Text style={styles.blueprintCycle}>{index + 1}사이클 프로젝트</Text>
       <Text style={styles.blueprintTitle}>{blueprint.title}</Text>
-      <Text style={commonStyles.bodyText}>{blueprint.problem}</Text>
+      {!!blueprint.problem && <Text style={commonStyles.bodyText}>{blueprint.problem}</Text>}
       <BlueprintSection title="추천 근거" items={[blueprint.recommendation_basis]} />
       <BlueprintSection title="구성 원칙" items={[blueprint.method_basis]} />
       <BlueprintSection title="관심 소재 적용 예시" items={[blueprint.domain_example]} />
@@ -241,11 +252,14 @@ function ProjectBlueprint({ blueprint, index }) {
 }
 
 function BlueprintSection({ title, items }) {
+  const safeItems = toArray(items).filter((item) => String(item).trim().length > 0);
+  if (!safeItems.length) return null;
+
   return (
     <View style={styles.blueprintSection}>
       <Text style={styles.blueprintLabel}>{title}</Text>
-      {(items ?? []).map((item) => (
-        <Text key={`${title}-${item}`} style={styles.blueprintItem}>- {item}</Text>
+      {safeItems.map((item, index) => (
+        <Text key={`${title}-${index}-${item}`} style={styles.blueprintItem}>- {item}</Text>
       ))}
     </View>
   );
@@ -328,6 +342,7 @@ function screenPadding(contentBottomPadding, isSmallScreen) {
   return [
     commonStyles.screen,
     {
+      flexGrow: 1,
       paddingBottom: contentBottomPadding,
       paddingHorizontal: isSmallScreen ? 14 : 20,
       paddingTop: isSmallScreen ? 14 : 20,
@@ -338,24 +353,42 @@ function screenPadding(contentBottomPadding, isSmallScreen) {
 const styles = {
   detailHeader: {
     backgroundColor: "#FFFDF8",
-    borderBottomColor: colors.cardBorder,
-    borderBottomWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: 8,
+    borderWidth: 1,
+    elevation: 1,
     gap: 7,
-    paddingBottom: 15,
+    minWidth: 0,
+    padding: 16,
+    shadowColor: "#3A3024",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    width: "100%",
   },
   compactDetailHeader: {
-    paddingBottom: 12,
+    gap: 6,
+    padding: 13,
+  },
+  detailTopRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    minWidth: 0,
+    width: "100%",
   },
   detailEyebrow: {
     color: colors.green,
     fontSize: 13,
     fontWeight: "900",
+    flexShrink: 1,
   },
   detailTitle: {
     color: colors.text,
+    flexShrink: 1,
     fontSize: 25,
     fontWeight: "900",
     lineHeight: 31,
+    width: "100%",
   },
   compactDetailTitle: {
     fontSize: 22,
@@ -363,18 +396,25 @@ const styles = {
   },
   detailMeta: {
     color: colors.green,
+    flexShrink: 1,
     fontSize: 13,
     fontWeight: "900",
+    lineHeight: 19,
+    width: "100%",
   },
   detailDescription: {
     color: colors.muted,
+    flexShrink: 1,
     fontSize: 14,
     lineHeight: 21,
+    width: "100%",
   },
   chipText: {
     color: "#FFFFFF",
+    flexShrink: 1,
     fontSize: 13,
     fontWeight: "900",
+    lineHeight: 18,
   },
   projectChip: {
     backgroundColor: colors.greenSoft,
@@ -392,37 +432,54 @@ const styles = {
     paddingTop: 11,
   },
   diagnosticHeader: {
-    alignItems: "center",
+    alignItems: "flex-start",
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
     justifyContent: "space-between",
+    minWidth: 0,
   },
   diagnosticSkill: {
     color: colors.text,
+    flex: 1,
+    flexShrink: 1,
     fontSize: 15,
     fontWeight: "900",
+    lineHeight: 21,
+    minWidth: 0,
   },
   levelPill: {
+    alignSelf: "flex-start",
     backgroundColor: colors.greenSoft,
     borderRadius: 6,
     color: colors.green,
+    flexShrink: 1,
     fontSize: 12,
     fontWeight: "900",
+    lineHeight: 16,
+    maxWidth: "100%",
     paddingHorizontal: 8,
     paddingVertical: 5,
   },
   priorityTitle: {
     color: colors.text,
+    flex: 1,
+    flexShrink: 1,
     fontSize: 15,
     fontWeight: "900",
+    lineHeight: 21,
+    minWidth: 0,
   },
   priorityPill: {
+    alignSelf: "flex-start",
     backgroundColor: "#17212B",
     borderRadius: 6,
     color: "#FFFFFF",
+    flexShrink: 1,
     fontSize: 11,
     fontWeight: "900",
+    lineHeight: 15,
+    maxWidth: "100%",
     paddingHorizontal: 8,
     paddingVertical: 5,
   },
@@ -443,7 +500,9 @@ const styles = {
     borderRadius: 8,
     borderWidth: 1,
     gap: 9,
+    minWidth: 0,
     padding: 13,
+    width: "100%",
   },
   blueprintCycle: {
     color: colors.green,
@@ -452,9 +511,11 @@ const styles = {
   },
   blueprintTitle: {
     color: colors.text,
+    flexShrink: 1,
     fontSize: 16,
     fontWeight: "900",
     lineHeight: 23,
+    width: "100%",
   },
   blueprintSection: {
     gap: 4,
@@ -466,8 +527,10 @@ const styles = {
   },
   blueprintItem: {
     color: colors.text,
+    flexShrink: 1,
     fontSize: 13,
     lineHeight: 20,
+    width: "100%",
   },
   updatedCard: {
     backgroundColor: "#F0F7F3",
