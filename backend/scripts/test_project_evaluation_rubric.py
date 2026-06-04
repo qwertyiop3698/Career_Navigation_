@@ -35,6 +35,7 @@ def main() -> None:
 
     current_project_submission = SimpleNamespace(
         cycle_index=1,
+        job_target="AI Backend Developer",
         github_url="https://github.com/qwertyiop3698/Career_Navigation_.git",
         problem_statement=(
             "비전공자 또는 주니어 지원자가 12주 안에 목표 직무 취업 준비를 진행할 때, "
@@ -45,7 +46,11 @@ def main() -> None:
         data_description=(
             "해외 공개 ATS 채용공고, local rescreen 결과, v3/v4 verified skill evidence, "
             "국내 수동 수집 공고 61건, KR v2.1 high confidence adoption evidence, "
-            "GLOBAL/KR RAG dry-run JSONL 문서를 사용했다."
+            "GLOBAL/KR RAG dry-run JSONL 문서를 사용했다. "
+            "기술/모델 선택 이유: FastAPI는 RAG 검색 API와 모바일 앱 요청을 안정적으로 제공하기 위해 선택했고, "
+            "PostgreSQL/pgvector는 임베딩 문서를 DB 안에서 검색하기 위해 선택했다. "
+            "Logistic Regression은 baseline으로, LightGBM은 README와 사용자 입력에서 추출한 구조화 feature를 "
+            "설명 가능하게 분류하기 위해 사용한다. 데이터가 적은 초기 단계라 딥러닝 대신 설명 가능성과 과적합 위험을 고려했다."
         ),
         skills_used=[
             "FastAPI",
@@ -95,6 +100,7 @@ def main() -> None:
 
     weak_control_submission = SimpleNamespace(
         cycle_index=1,
+        job_target="AI Backend Developer",
         github_url="",
         problem_statement="취업 준비 앱을 만들었다.",
         data_description="데이터 사용.",

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
+from app.core.logging import mask_sensitive_payload
 from app.db import get_db
 from app.models import User
 from app.schemas import (
@@ -56,7 +57,7 @@ def create_roadmap(
         return serialize_roadmap(roadmap)
     except Exception:
         db.rollback()
-        logger.exception("Failed to create roadmap. payload=%s", _payload_to_dict(payload))
+        logger.exception("Failed to create roadmap. payload=%s", mask_sensitive_payload(payload))
         raise
 
 
@@ -190,9 +191,3 @@ def get_my_roadmap_progress(
         "total_count": total_count,
         "message": None,
     }
-
-
-def _payload_to_dict(payload: RoadmapCreateRequest) -> dict:
-    if hasattr(payload, "model_dump"):
-        return payload.model_dump()
-    return payload.dict()

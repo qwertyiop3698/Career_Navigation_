@@ -4,16 +4,22 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.api.security import require_admin_or_internal_api_key
 from app.db import get_db
-from app.models import ExternalJobPosting
+from app.models import ExternalJobPosting, User
 from app.services.external_jobs.persistence import collect_external_jobs_to_db
 from app.services.external_jobs.skill_extractor import TECH_KEYWORDS
 
 router = APIRouter(prefix="/api/v1/external-jobs", tags=["External Jobs"])
+admin_router = APIRouter(prefix="/api/v1/admin/external-jobs", tags=["Admin External Jobs"])
 
 
+@admin_router.post("/collect")
 @router.post("/collect")
-def collect_external_jobs(db: Session = Depends(get_db)):
+def collect_external_jobs(
+    db: Session = Depends(get_db),
+    _: User | None = Depends(require_admin_or_internal_api_key),
+):
     return collect_external_jobs_to_db(db)
 
 
@@ -88,4 +94,3 @@ def _canonical_skill(skill: str) -> str:
         if keyword.lower() == normalized:
             return keyword
     return skill.strip()
-

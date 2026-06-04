@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
+from app.core.logging import mask_sensitive_payload
 from app.db import get_db
 from app.models import Skill, User, UserSkill
 from app.schemas import (
@@ -76,7 +77,7 @@ def create_user_profile(
         db.rollback()
         logger.exception(
             "Failed to create user profile. payload=%s normalized_skills=%s",
-            _payload_to_dict(payload),
+            mask_sensitive_payload(payload),
             skill_names,
         )
         raise
@@ -126,9 +127,3 @@ def _normalize_skill_assessments(payload: UserProfileCreate) -> list[SkillAssess
         seen.add(key)
 
     return normalized
-
-
-def _payload_to_dict(payload: UserProfileCreate) -> dict:
-    if hasattr(payload, "model_dump"):
-        return payload.model_dump()
-    return payload.dict()

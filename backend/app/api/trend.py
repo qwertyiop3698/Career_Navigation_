@@ -3,8 +3,9 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.security import require_admin_or_internal_api_key
 from app.db import get_db
-from app.models import JobRoleMarketHistory, JobRoleSkillEvidence, Skill, SkillTrend
+from app.models import JobRoleMarketHistory, JobRoleSkillEvidence, Skill, SkillTrend, User
 from app.schemas import (
     JobRoleMarketHistoryResponse,
     JobRoleSkillEvidenceResponse,
@@ -14,8 +15,14 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/api/v1/trends", tags=["trends"])
+admin_router = APIRouter(prefix="/api/v1/admin/trends", tags=["admin-trends"])
 
 
+@admin_router.post(
+    "",
+    response_model=SkillTrendCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 @router.post(
     "",
     response_model=SkillTrendCreateResponse,
@@ -24,6 +31,7 @@ router = APIRouter(prefix="/api/v1/trends", tags=["trends"])
 def create_skill_trend(
     payload: SkillTrendCreate,
     db: Session = Depends(get_db),
+    _: User | None = Depends(require_admin_or_internal_api_key),
 ):
     skill_name = payload.skill_name.strip()
     if not skill_name:

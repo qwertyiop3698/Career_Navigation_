@@ -1,6 +1,8 @@
 import json
 import re
 from datetime import datetime
+from functools import lru_cache
+from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
@@ -33,6 +35,45 @@ TECHNIQUE_STOPWORDS = {
     "환경",
     "서비스",
     "기술",
+}
+
+TECH_SKILL_ALIASES = {
+    "RAG": [r"\brag\b", "검색증강생성"],
+    "Retrieval": [r"\bretrieval\b", "검색"],
+    "LLM": [r"\bllm\b", "large language model", "거대언어모델"],
+    "API": [r"\bapi\b", "REST API", "엔드포인트"],
+    "FastAPI": [r"\bfastapi\b", "Fast API"],
+    "Vector Database": ["vector database", "vector db", "vectordb", "pgvector", "벡터db", "벡터 db"],
+    "Embedding": [r"\bembedding\b", "임베딩"],
+    "PostgreSQL": [r"\bpostgresql\b", r"\bpostgres\b"],
+    "Docker": [r"\bdocker\b", "컨테이너"],
+    "Kubernetes": [r"\bkubernetes\b", r"\bk8s\b"],
+    "LangChain": [r"\blangchain\b", "랭체인"],
+    "LangGraph": [r"\blanggraph\b", "랭그래프"],
+    "Model Serving": ["model serving", "모델 서빙", "서빙"],
+    "Inference Serving": ["inference serving", "추론"],
+    "Data Pipeline": ["data pipeline", "데이터 파이프라인"],
+    "ETL": [r"\betl\b", "elt"],
+    "Airflow": [r"\bairflow\b", "에어플로우"],
+    "Spark": [r"\bspark\b", "스파크"],
+    "SQL": [r"\bsql\b"],
+    "Python": [r"\bpython\b", "파이썬"],
+    "React": [r"\breact\b", "리액트"],
+    "TypeScript": [r"\btypescript\b", "타입스크립트"],
+    "JavaScript": [r"\bjavascript\b", "자바스크립트"],
+    "Spring": [r"\bspring\b", "스프링"],
+    "LightGBM": [r"\blightgbm\b"],
+    "Logistic Regression": ["logistic regression", "로지스틱 회귀"],
+}
+
+ROLE_FALLBACK_SKILLS = {
+    "AI Backend Developer": {"RAG", "Retrieval", "LLM", "API", "FastAPI", "Vector Database", "Embedding", "PostgreSQL", "Docker", "LangChain", "Model Serving", "Inference Serving"},
+    "Backend Developer": {"API", "FastAPI", "PostgreSQL", "Docker", "Kubernetes", "Python", "Spring", "SQL"},
+    "Builder": {"LLM", "API", "FastAPI", "React", "TypeScript", "JavaScript", "Python", "Automation", "LangChain"},
+    "Data Analyst": {"SQL", "Python", "Analytics", "Dashboard", "Statistics"},
+    "Data Engineer": {"Data Pipeline", "ETL", "Airflow", "Spark", "SQL", "Python", "PostgreSQL", "Docker"},
+    "Data Scientist": {"Python", "Machine Learning", "Statistics", "Regression", "Classification", "Deep Learning"},
+    "Frontend Developer": {"React", "TypeScript", "JavaScript", "HTML", "CSS", "Next.js"},
 }
 
 
@@ -241,114 +282,150 @@ def _evaluate_rules(submission: ProjectSubmission, blueprint: dict) -> dict:
     critical: list[str] = []
     breakdown: dict[str, int] = {}
 
-    problem_score = 0
-    if len(submission.problem_statement.strip()) >= 60:
-        problem_score += 8
-        passed.append("문제 정의: 대상 사용자, 해결하려는 문제, 프로젝트 목적을 검토할 수 있는 길이로 작성되었습니다.")
-    else:
-        missing.append("문제 정의: 대상 사용자, 해결하려는 문제, 프로젝트 목표를 한 문단으로 구체화하세요.")
-    if len(submission.data_description.strip()) >= 30:
-        problem_score += 4
-        passed.append("데이터 설명: 사용 데이터 또는 검증 대상이 제출 내용에서 확인됩니다.")
-    else:
-        missing.append("데이터 설명: 데이터 출처, 주요 필드, 평가 대상 또는 목표 변수를 적어주세요.")
-    if _contains_any(submission.problem_statement, ["예측", "분석", "목표", "문제", "개선", "분류", "회귀", "구현"]):
-        problem_score += 3
-    breakdown["문제 정의"] = problem_score
+    features = _build_portfolio_features(submission, blueprint)
 
-    evidence_text = " ".join(
-        [
-            *submission.skills_used,
-            *submission.methods_used,
-            submission.result_summary,
-            submission.readme_text or "",
-        ]
-    )
-    matched_methods = [
-        technique
-        for technique in blueprint.get("techniques", [])
-        if _technique_is_evidenced(technique, evidence_text)
-    ]
-    implementation_score = 0
-    if len(submission.skills_used) >= 2:
-        implementation_score += 5
-        passed.append(f"핵심 구현: 사용 기술 {len(submission.skills_used)}개가 제출되었습니다.")
+    consistency_score = 0
+    if len(submission.problem_statement.strip()) >= 60:
+        consistency_score += 5
+        passed.append("사용자 설명: 해결하려는 문제와 프로젝트 의도를 검토할 수 있는 길이로 작성했습니다.")
     else:
-        missing.append("핵심 구현: 실제 사용한 기술을 최소 2개 이상 입력하세요.")
-    if len(submission.methods_used) >= 2:
-        implementation_score += 10
-        passed.append("핵심 구현: 구현 방식이 2개 이상 제시되어 구조를 검토할 수 있습니다.")
+        missing.append("사용자 설명: 해결하려는 문제와 목표 사용자를 한 문단으로 구체화하세요.")
+    if features["claimed_skill_count"] >= 2:
+        consistency_score += 4
+        passed.append(f"사용자 설명: 보여주고 싶은 직무 스킬 {features['claimed_skill_count']}개가 제출되었습니다.")
     else:
-        missing.append("핵심 구현: API, 데이터 흐름, 모델, 화면, 배포 등 실제 구현 방식을 2개 이상 적어주세요.")
-        critical.append("핵심 구현 방식의 증거가 부족합니다.")
-    method_points = min(15, len(matched_methods) * 5)
-    implementation_score += method_points
-    if matched_methods:
+        missing.append("사용자 설명: 이 프로젝트로 증명하려는 직무 스킬을 최소 2개 이상 입력하세요.")
+    if features["readme_claim_overlap_count"] >= 2:
+        consistency_score += 7
+        passed.append("주장-README 일치: 사용자가 주장한 기술 중 2개 이상이 README에서도 확인됩니다.")
+    elif features["readme_claim_overlap_count"] >= 1:
+        consistency_score += 4
+        missing.append("주장-README 일치: README에서 확인되는 사용자 주장 기술이 1개뿐입니다.")
+    else:
+        missing.append("주장-README 일치: 사용자가 주장한 핵심 기술이 README 증거에서 확인되지 않습니다.")
+        critical.append("사용자 주장과 README 증거의 연결이 약합니다.")
+    if features["technology_reason_present"]:
+        consistency_score += 4
+        passed.append("기술 선택 이유: 왜 이 기술/모델을 선택했는지 사용자가 설명했습니다.")
+    else:
+        missing.append("기술 선택 이유: 왜 이 기술/모델을 사용했는지, 목표 직무와의 연결을 적어주세요.")
+    breakdown["사용자-README 일치"] = min(consistency_score, 20)
+
+    readme_score = 0
+    if features["readme_length"] >= 500:
+        readme_score += 5
+        passed.append("README 증거: README 본문이 충분한 길이로 자동 수집되었습니다.")
+    elif features["readme_length"] >= 160:
+        readme_score += 3
+        missing.append("README 증거: README는 수집됐지만 포트폴리오 증빙으로는 조금 짧습니다.")
+    else:
+        missing.append("README 증거: GitHub README가 없거나 너무 짧습니다.")
+        if not submission.github_url and not submission.execution_url:
+            critical.append("검토 가능한 README 또는 결과물 증빙이 부족합니다.")
+    if features["readme_has_problem"]:
+        readme_score += 3
+    else:
+        missing.append("README 증거: 문제 정의 또는 프로젝트 목적 섹션을 추가하세요.")
+    if features["readme_has_implementation"]:
+        readme_score += 4
+        passed.append("README 증거: 구현 방식, 아키텍처, API, 데이터 흐름 중 하나가 설명되어 있습니다.")
+    else:
+        missing.append("README 증거: 구현 흐름, API, 모델 구조, 데이터 흐름 중 하나를 README에 명시하세요.")
+    if features["readme_has_result"]:
+        readme_score += 4
+        passed.append("README 증거: 결과, 예시, 화면, 지표 또는 테스트 근거가 확인됩니다.")
+    else:
+        missing.append("README 증거: 실행 결과, 예시 응답, 화면 캡처, 지표 중 하나를 추가하세요.")
+    if features["readme_has_limitation"]:
+        readme_score += 2
+    else:
+        missing.append("README 증거: 한계와 다음 개선 계획을 README에 추가하세요.")
+    if features["readme_has_runbook"]:
+        readme_score += 2
+        passed.append("README 증거: 실행 또는 재현 절차가 확인됩니다.")
+    else:
+        missing.append("README 증거: 설치 및 실행 방법을 README에 명시하세요.")
+    breakdown["README 증빙력"] = min(readme_score, 20)
+
+    market_score = 0
+    if features["global_evidence_match_count"]:
+        market_score += min(10, features["global_evidence_match_count"] * 3)
         passed.append(
-            f"핵심 구현: 앱이 제안한 구현 기술 중 {len(matched_methods)}개가 제출 내용에서 직접 확인됩니다."
+            f"GLOBAL 근거: 목표 직무의 해외 선행 신호와 {features['global_evidence_match_count']}개 기술이 연결됩니다."
         )
     else:
-        missing.append("핵심 구현: 앱이 제안한 핵심 기술이 제출 설명 또는 README 근거에서 확인되지 않습니다.")
-    breakdown["핵심 구현"] = implementation_score
+        missing.append("GLOBAL 근거: 사용 기술이 목표 직무의 해외 선행 신호와 충분히 매칭되지 않습니다.")
+    if features["kr_evidence_match_count"]:
+        market_score += min(7, features["kr_evidence_match_count"] * 3)
+        passed.append(
+            f"KR 근거: 국내 적용 사례와 {features['kr_evidence_match_count']}개 기술이 연결됩니다."
+        )
+    else:
+        missing.append("KR 근거: 현재 국내 적용 사례와 직접 연결되는 기술이 부족합니다.")
+    if features["role_fallback_match_count"] >= 2:
+        market_score += 5
+    elif features["role_fallback_match_count"] >= 1:
+        market_score += 3
+    else:
+        critical.append("목표 직무의 핵심 기술 근거와 프로젝트 기술이 거의 맞지 않습니다.")
+    if features["unrelated_skill_count"] == 0:
+        market_score += 3
+    else:
+        missing.append(
+            f"직무 적합성: 목표 직무 근거와 약한 기술 {features['unrelated_skill_count']}개는 README에서 역할을 더 설명해야 합니다."
+        )
+    breakdown["직무/시장 근거 적합성"] = min(market_score, 25)
 
-    validation_score = 0
-    if submission.metrics_used:
-        validation_score += 8
-        passed.append(f"검증: 측정 지표 또는 결과 항목 {len(submission.metrics_used)}개가 기재되었습니다.")
-    elif re.search(r"\d", submission.result_summary):
-        validation_score += 8
-        passed.append("결과 요약에서 수치 기반 측정 결과가 확인됩니다.")
+    reasoning_score = 0
+    reason_text = features["technology_reason_text"]
+    if len(reason_text) >= 60:
+        reasoning_score += 5
+    elif len(reason_text) >= 20:
+        reasoning_score += 3
     else:
-        missing.append("결과 요약에 수치로 확인할 측정 결과를 포함하세요.")
-        critical.append("측정 결과 근거가 없습니다.")
-    if re.search(r"\d", submission.result_summary):
-        validation_score += 5
-        passed.append("검증: 결과 요약에 수치 결과가 포함되어 있습니다.")
+        missing.append("기술 선택 이유: 기술을 쓴 목적, 직무 연결, 대안을 더 구체화하세요.")
+    if _contains_any(reason_text, ["왜", "목적", "필요", "문제", "해결", "선택", "위해"]):
+        reasoning_score += 4
     else:
-        missing.append("검증: 결과 요약에 실제 측정값, 건수, 점수, 시간, 비용 중 하나를 포함하세요.")
-    validation_text = f"{submission.result_summary} {submission.improvement_notes} {submission.readme_text or ''}"
-    for phrase in ["baseline", "베이스라인", "비교", "cross-validation", "교차검증", "오차", "실패", "test", "검증"]:
-        if phrase.lower() in validation_text.lower():
-            validation_score += 12
-            passed.append("검증: 비교, 테스트, 실패 분석, 베이스라인 중 하나가 설명되어 있습니다.")
-            break
+        missing.append("기술 선택 이유: 문제 해결 목적과 기술 선택을 직접 연결하세요.")
+    if _contains_any(reason_text, [submission.job_target, "직무", "역량", "채용", "백엔드", "데이터", "프론트", "AI"]):
+        reasoning_score += 4
     else:
-        missing.append("검증: 베이스라인 비교, 테스트 방법, 실패 사례 분석 중 하나를 추가하세요.")
-    breakdown["검증"] = min(validation_score, 25)
-
-    explanation_score = 0
-    if len(submission.result_summary.strip()) >= 70:
-        explanation_score += 7
-        passed.append("해석: 결과가 무엇을 의미하는지 검토할 수 있는 설명이 있습니다.")
+        missing.append("기술 선택 이유: 목표 직무에서 어떤 역량을 보여주려는 선택인지 적어주세요.")
+    if _contains_any(reason_text, ["대신", "비교", "대안", "tradeoff", "과적합", "설명 가능", "비용", "데이터가 적"]):
+        reasoning_score += 4
+        passed.append("기술 선택 이유: 대안, 제약, 비용, 설명 가능성 중 하나를 고려했습니다.")
     else:
-        missing.append("해석: 측정 결과가 직무 역량 증명에 어떤 의미가 있는지 설명하세요.")
+        missing.append("기술 선택 이유: 다른 방법 대신 이 방식을 선택한 이유나 한계를 추가하세요.")
     if len(submission.improvement_notes.strip()) >= 40:
-        explanation_score += 8
-        passed.append("해석: 한계 또는 다음 개선 계획이 작성되었습니다.")
+        reasoning_score += 3
     else:
-        missing.append("해석: 실패 사례, 한계, 다음 개선 실험을 구체적으로 작성하세요.")
-    breakdown["해석 및 개선"] = explanation_score
+        missing.append("한계 인식: 실패 사례, 한계, 다음 개선 실험을 구체적으로 작성하세요.")
+    breakdown["기술 선택 타당성"] = min(reasoning_score, 20)
 
-    delivery_score = 0
-    if submission.readme_text and len(submission.readme_text.strip()) >= 160:
-        delivery_score += 8
-        passed.append("전달 가능성: GitHub README 또는 제출 증빙 텍스트가 평가 입력에 포함되었습니다.")
+    result_score = 0
+    if submission.metrics_used:
+        result_score += 4
+        passed.append(f"결과 증빙: 결과 증빙 또는 측정 항목 {len(submission.metrics_used)}개가 확인됩니다.")
+    if re.search(r"\d", submission.result_summary):
+        result_score += 4
+        passed.append("결과 증빙: 결과 요약에 수치가 포함되어 있습니다.")
     else:
-        missing.append("README, PDF, 캡처에서 확인 가능한 문제, 실행법, 결과 내용을 붙여 넣어주세요.")
-        if not submission.github_url and not submission.execution_url:
-            critical.append("검토 가능한 결과물 증빙이 부족합니다.")
-    if _contains_any(submission.readme_text or "", ["실행", "install", "pip", "npm", "requirements", "docker", "사용법"]):
-        delivery_score += 5
-        passed.append("전달 가능성: 실행 또는 재현 절차가 README/증빙에서 확인됩니다.")
+        missing.append("결과 증빙: 실제 측정값, 건수, 점수, 시간, 비용 중 하나를 포함하세요.")
+        critical.append("측정 결과 근거가 부족합니다.")
+    if _contains_any(
+        f"{submission.result_summary} {submission.readme_text or ''}",
+        ["baseline", "베이스라인", "비교", "before", "after", "테스트", "test", "pytest", "통과", "캡처", "스크린샷", "screenshot"],
+    ):
+        result_score += 5
+        passed.append("결과 증빙: 비교, 테스트, 실행 화면, 캡처 중 하나가 확인됩니다.")
     else:
-        missing.append("설치 및 실행 방법을 README에 명시하세요.")
-    if submission.github_url and submission.github_url.startswith(("https://github.com/", "http://github.com/")):
-        delivery_score += 2
-        passed.append("전달 가능성: GitHub 주소가 제출되어 README 자동 수집 대상으로 사용됩니다.")
-    elif submission.execution_url:
-        delivery_score += 2
-        passed.append("실행 URL 또는 결과물 URL이 보조 증빙으로 제출되었습니다.")
-    breakdown["전달 가능성"] = delivery_score
+        missing.append("결과 증빙: 비교 결과, 테스트 로그, 실행 화면 캡처, 예시 응답 중 하나를 README에 추가하세요.")
+    if len(submission.result_summary.strip()) >= 70:
+        result_score += 2
+    else:
+        missing.append("결과 증빙: 결과가 직무 역량 증명에 어떤 의미가 있는지 설명하세요.")
+    breakdown["결과 증빙"] = min(result_score, 15)
 
     total = min(100, sum(breakdown.values()))
     scope_cap = _evidence_scope_score_cap(submission)
@@ -371,7 +448,7 @@ def _evaluate_rules(submission: ProjectSubmission, blueprint: dict) -> dict:
         "project_evidence_points": evidence_points,
         "status": evaluation_status,
         "score_breakdown": breakdown,
-        "passed_checks": passed,
+        "passed_checks": passed + [_format_feature_summary(features)],
         "missing_checks": missing,
         "critical_issues": list(dict.fromkeys(critical)),
     }
@@ -388,6 +465,171 @@ def _technique_is_evidenced(technique: str, submitted_text: str) -> bool:
     if not meaningful:
         return False
     return any(token.lower() in lowered for token in meaningful)
+
+
+def _build_portfolio_features(submission: ProjectSubmission, blueprint: dict) -> dict:
+    readme = submission.readme_text or ""
+    user_text = " ".join(
+        [
+            submission.problem_statement or "",
+            submission.data_description or "",
+            " ".join(submission.skills_used or []),
+            " ".join(submission.methods_used or []),
+            submission.result_summary or "",
+            submission.improvement_notes or "",
+        ]
+    )
+    combined_text = f"{user_text} {readme}"
+    claimed_skills = _extract_canonical_skills(
+        " ".join([*submission.skills_used, *submission.methods_used, submission.data_description or ""])
+    )
+    readme_skills = _extract_canonical_skills(readme)
+    all_detected_skills = sorted(set(claimed_skills) | set(readme_skills))
+    overlap = sorted(set(claimed_skills) & set(readme_skills))
+    evidence = _load_role_evidence_index()
+    role = submission.job_target
+    role_fallback = ROLE_FALLBACK_SKILLS.get(role, set())
+    global_matches = sorted(
+        skill
+        for skill in all_detected_skills
+        if skill in evidence["global"].get(role, set())
+    )
+    kr_matches = sorted(
+        skill
+        for skill in all_detected_skills
+        if skill in evidence["kr"].get(role, set())
+    )
+    role_matches = sorted(skill for skill in all_detected_skills if skill in role_fallback)
+    weak_skills = [
+        skill
+        for skill in all_detected_skills
+        if skill not in set(global_matches) | set(kr_matches) | set(role_matches)
+    ]
+    technology_reason_text = _extract_technology_reason_text(submission)
+    return {
+        "target_role": role,
+        "claimed_skill_count": len(claimed_skills),
+        "readme_skill_count": len(readme_skills),
+        "readme_claim_overlap_count": len(overlap),
+        "claimed_skills": claimed_skills,
+        "readme_skills": readme_skills,
+        "overlap_skills": overlap,
+        "global_evidence_match_count": len(global_matches),
+        "kr_evidence_match_count": len(kr_matches),
+        "role_fallback_match_count": len(role_matches),
+        "global_evidence_matched_skills": global_matches,
+        "kr_evidence_matched_skills": kr_matches,
+        "role_fallback_matched_skills": role_matches,
+        "unrelated_skill_count": len(weak_skills),
+        "unrelated_skills": weak_skills,
+        "readme_length": len(readme.strip()),
+        "readme_has_problem": _contains_any(readme, ["문제", "problem", "purpose", "목표", "배경", "해결"]),
+        "readme_has_implementation": _contains_any(
+            readme,
+            ["구현", "architecture", "아키텍처", "api", "model", "모델", "pipeline", "파이프라인", "flow", "흐름"],
+        ),
+        "readme_has_result": _contains_any(
+            readme,
+            ["결과", "result", "평가", "metric", "accuracy", "정확도", "화면", "캡처", "screenshot", "test", "테스트"],
+        ),
+        "readme_has_limitation": _contains_any(readme, ["한계", "limitation", "개선", "todo", "future", "실패"]),
+        "readme_has_runbook": _contains_any(readme, ["실행", "install", "pip", "npm", "requirements", "docker", "사용법", "run"]),
+        "technology_reason_present": len(technology_reason_text.strip()) >= 20,
+        "technology_reason_text": technology_reason_text,
+        "ml_model_feature_note": "LightGBM 학습 전 단계의 rule-based pseudo-label/feature입니다.",
+    }
+
+
+def _extract_technology_reason_text(submission: ProjectSubmission) -> str:
+    marker = "기술/모델 선택 이유:"
+    text = submission.data_description or ""
+    if marker in text:
+        return text.split(marker, 1)[1].strip()
+    return " ".join(
+        [
+            submission.data_description or "",
+            submission.improvement_notes or "",
+        ]
+    ).strip()
+
+
+def _format_feature_summary(features: dict) -> str:
+    return (
+        "ML-ready feature: "
+        f"claimed_skills={features['claimed_skills']}, "
+        f"readme_overlap={features['overlap_skills']}, "
+        f"global_matches={features['global_evidence_matched_skills']}, "
+        f"kr_matches={features['kr_evidence_matched_skills']}, "
+        f"weak_skills={features['unrelated_skills']}"
+    )
+
+
+def _extract_canonical_skills(text: str) -> list[str]:
+    if not text:
+        return []
+    found: list[str] = []
+    for skill, aliases in TECH_SKILL_ALIASES.items():
+        for alias in aliases:
+            if alias.startswith("\\b") or any(ch in alias for ch in ["[", "(", "|", "\\"]):
+                if re.search(alias, text, flags=re.IGNORECASE):
+                    found.append(skill)
+                    break
+            elif alias.lower() in text.lower():
+                found.append(skill)
+                break
+    return sorted(dict.fromkeys(found))
+
+
+@lru_cache(maxsize=1)
+def _load_role_evidence_index() -> dict:
+    backend_root = Path(__file__).resolve().parents[2]
+    global_path = backend_root / "data" / "exports" / "rag_dryrun" / "global_rag_documents_dryrun_v1.jsonl"
+    kr_path = backend_root / "data" / "exports" / "rag_dryrun" / "kr_rag_documents_dryrun_v1.jsonl"
+    index = {"global": {}, "kr": {}}
+    _read_evidence_jsonl(global_path, index["global"], market="global")
+    _read_evidence_jsonl(kr_path, index["kr"], market="kr")
+    for role, skills in ROLE_FALLBACK_SKILLS.items():
+        index["global"].setdefault(role, set()).update(skills)
+    return index
+
+
+def _read_evidence_jsonl(path: Path, target: dict[str, set[str]], market: str) -> None:
+    if not path.exists():
+        return
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        metadata = item.get("metadata") or {}
+        if market == "global":
+            role = metadata.get("job_role_category")
+            skills = [
+                *(metadata.get("verified_core_skills") or []),
+                *(metadata.get("verified_secondary_skills") or []),
+            ]
+            _add_role_skills(target, role, skills)
+        else:
+            primary = metadata.get("primary_role")
+            related = metadata.get("related_roles") or []
+            skills = metadata.get("verified_adoption_skills") or []
+            _add_role_skills(target, primary, skills)
+            for role in related:
+                _add_role_skills(target, role, skills)
+
+
+def _add_role_skills(target: dict[str, set[str]], role: str | None, skills: list[str]) -> None:
+    if not role:
+        return
+    normalized = {skill for skill in skills if isinstance(skill, str) and skill}
+    if normalized:
+        target.setdefault(role, set()).update(normalized)
 
 
 def _contains_any(value: str, keywords: list[str]) -> bool:

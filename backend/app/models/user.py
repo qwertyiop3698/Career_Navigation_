@@ -14,6 +14,7 @@ class User(Base):
     email = Column(Text, unique=True, index=True)
     nickname = Column(Text)
     password_hash = Column(Text)
+    role = Column(Text, nullable=False, default="user")
     github_url = Column(Text)
     job_target = Column(Text)
     interest_domain = Column(Text)

@@ -85,8 +85,8 @@ export default function AssignmentReviewScreen({
         data_description: buildDataDescription(form),
         skills_used: splitValues(form.skillsUsed),
         methods_used: splitValues(form.methodsUsed),
-        metrics_used: inferMetricItems(form.resultSummary),
-        result_summary: form.resultSummary.trim(),
+        metrics_used: uniqueItems([...splitValues(form.evidenceMethods), ...inferMetricItems(form.resultSummary)]),
+        result_summary: buildResultSummary(form),
         improvement_notes: form.improvementNotes.trim(),
         readme_text: null,
         execution_url: null,
@@ -269,8 +269,10 @@ function SubmissionForm({ cycleIndex, form, formErrors, isPending, onChange, onS
       )}
       <SubmissionInput label="GitHub URL (README 자동 수집)" value={form.githubUrl} onChangeText={(value) => onChange(cycleIndex, "githubUrl", value)} />
       <SubmissionInput error={formErrors.problemStatement} multiline label="이 프로젝트가 해결한 문제 *" value={form.problemStatement} onChangeText={(value) => onChange(cycleIndex, "problemStatement", value)} />
-      <SubmissionInput label="사용 기술 (쉼표 구분)" value={form.skillsUsed} onChangeText={(value) => onChange(cycleIndex, "skillsUsed", value)} />
-      <SubmissionInput label="모델 또는 구현 방식 (쉼표 구분)" value={form.methodsUsed} onChangeText={(value) => onChange(cycleIndex, "methodsUsed", value)} />
+      <SubmissionInput label="보여주고 싶은 직무 스킬 (쉼표 구분)" value={form.skillsUsed} onChangeText={(value) => onChange(cycleIndex, "skillsUsed", value)} />
+      <SubmissionInput label="사용한 모델 또는 구현 방식 (쉼표 구분)" value={form.methodsUsed} onChangeText={(value) => onChange(cycleIndex, "methodsUsed", value)} />
+      <SubmissionInput error={formErrors.techReason} multiline label="왜 이 기술/모델을 사용했나요? *" value={form.techReason} onChangeText={(value) => onChange(cycleIndex, "techReason", value)} />
+      <SubmissionInput label="결과 증빙 방식 (쉼표 구분)" value={form.evidenceMethods} onChangeText={(value) => onChange(cycleIndex, "evidenceMethods", value)} />
       <SubmissionInput error={formErrors.resultSummary} multiline label="측정 결과와 비교 내용 *" value={form.resultSummary} onChangeText={(value) => onChange(cycleIndex, "resultSummary", value)} />
       <SubmissionInput error={formErrors.improvementNotes} multiline label="실패 사례, 한계, 개선 계획 *" value={form.improvementNotes} onChangeText={(value) => onChange(cycleIndex, "improvementNotes", value)} />
       <Pressable disabled={isPending} style={styles.evaluateButton} onPress={() => onSubmit(cycleIndex)}>
@@ -372,6 +374,8 @@ function createEmptyForm(githubUrl = "") {
     problemStatement: "",
     skillsUsed: "",
     methodsUsed: "",
+    techReason: "",
+    evidenceMethods: "",
     resultSummary: "",
     improvementNotes: "",
   };
@@ -384,6 +388,9 @@ function validateForm(form) {
   }
   if (form.resultSummary.trim().length < 5) {
     errors.resultSummary = "측정한 결과를 5자 이상 입력해주세요.";
+  }
+  if (form.techReason.trim().length < 10) {
+    errors.techReason = "기술/모델을 선택한 이유를 10자 이상 입력해주세요.";
   }
   if (form.improvementNotes.trim().length < 5) {
     errors.improvementNotes = "한계 또는 개선 계획을 5자 이상 입력해주세요.";
@@ -410,12 +417,20 @@ function splitValues(value) {
 function buildDataDescription(form) {
   const skills = splitValues(form.skillsUsed);
   const methods = splitValues(form.methodsUsed);
+  const reason = form.techReason.trim();
   const parts = [
     "GitHub README 자동 수집 결과와 사용자가 입력한 핵심 설명을 기준으로 평가합니다.",
     skills.length ? `사용 기술: ${skills.join(", ")}` : "",
     methods.length ? `구현 방식: ${methods.join(", ")}` : "",
+    reason ? `기술/모델 선택 이유: ${reason}` : "",
   ].filter(Boolean);
   return parts.join(" ");
+}
+
+function buildResultSummary(form) {
+  const evidence = splitValues(form.evidenceMethods);
+  const prefix = evidence.length ? `결과 증빙 방식: ${evidence.join(", ")}. ` : "";
+  return `${prefix}${form.resultSummary.trim()}`;
 }
 
 function inferMetricItems(resultSummary) {
@@ -437,6 +452,10 @@ function inferMetricItems(resultSummary) {
   }
   if (!metrics.length && /\d/.test(text)) metrics.push("수치 측정 결과");
   return metrics.slice(0, 8);
+}
+
+function uniqueItems(items) {
+  return [...new Set(items.map((item) => String(item ?? "").trim()).filter(Boolean))].slice(0, 20);
 }
 
 function statusLabel(status) {

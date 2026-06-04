@@ -2,7 +2,6 @@ import base64
 import hashlib
 import hmac
 import json
-import os
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -10,13 +9,19 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.config import get_env
 from app.db import get_db
 from app.models import User
 from app.schemas.auth import AuthResponse, LoginRequest, SignupRequest
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
-TOKEN_SECRET = os.getenv("AUTH_TOKEN_SECRET", "career-navigation-ai-dev-secret")
+TOKEN_SECRET = get_env("AUTH_TOKEN_SECRET")
+if not TOKEN_SECRET:
+    raise RuntimeError(
+        "AUTH_TOKEN_SECRET must be configured before starting the API. "
+        "Set it in .env or the deployment environment."
+    )
 TOKEN_TTL_HOURS = 24 * 14
 
 

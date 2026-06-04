@@ -7,13 +7,17 @@ from app import models
 from app.api.agent import router as agent_router
 from app.api.auth import router as auth_router
 from app.api.data_collection import legacy_router as legacy_data_collection_router
+from app.api.data_collection import admin_router as admin_data_collection_router
 from app.api.data_collection import router as data_collection_router
 from app.api.job import router as jobs_router
 from app.api.model import router as model_router
 from app.api.project import router as project_router
+from app.api.rag import admin_router as admin_rag_router
 from app.api.rag import router as rag_router
 from app.api.roadmap import router as roadmaps_router
+from app.api.trend import admin_router as admin_trends_router
 from app.api.trend import router as trends_router
+from app.api.v1.external_jobs import admin_router as admin_external_jobs_router
 from app.api.v1.external_jobs import router as external_jobs_router
 from app.api.v1.users import router as users_router
 from app.db import Base, engine
@@ -38,6 +42,10 @@ app.add_middleware(
 )
 app.include_router(agent_router)
 app.include_router(auth_router)
+app.include_router(admin_data_collection_router)
+app.include_router(admin_external_jobs_router)
+app.include_router(admin_rag_router)
+app.include_router(admin_trends_router)
 app.include_router(data_collection_router)
 app.include_router(legacy_data_collection_router)
 app.include_router(jobs_router)
@@ -73,11 +81,14 @@ def _ensure_mvp_columns():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS nickname TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user'",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS github_url TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS interest_domain TEXT",
         "ALTER TABLE user_skills ADD COLUMN IF NOT EXISTS proficiency_level INTEGER DEFAULT 0",
         "ALTER TABLE user_skills ADD COLUMN IF NOT EXISTS evidence_note TEXT",
         "ALTER TABLE user_skills ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP",
+        "UPDATE users SET role = COALESCE(role, 'user')",
+        "ALTER TABLE users ALTER COLUMN role SET NOT NULL",
         "UPDATE user_skills SET proficiency_level = COALESCE(proficiency_level, 0)",
         "ALTER TABLE user_skills ALTER COLUMN proficiency_level SET NOT NULL",
         "ALTER TABLE roadmaps ADD COLUMN IF NOT EXISTS job_target TEXT",

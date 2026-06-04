@@ -2,7 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
+from app.api.security import require_admin_or_internal_api_key
 from app.db import get_db
+from app.models import User
 
 from app.services.data_collection import (
     DataCollectionError,
@@ -13,10 +15,12 @@ from app.services.data_collection import (
 )
 
 router = APIRouter(prefix="/api/v1/data", tags=["data-collection"])
+admin_router = APIRouter(prefix="/api/v1/admin/data", tags=["admin-data-collection"])
 legacy_router = APIRouter(prefix="/api/v1/data-collection", tags=["data-collection"])
 collector = JobPostingCollector()
 
 
+@admin_router.post("/jobs/collect")
 @router.post("/jobs/collect")
 def collect_jobs(
     source: str = Query(
@@ -49,6 +53,7 @@ def collect_jobs(
     pageNo: int | None = Query(default=None, ge=1),
     numOfRows: int | None = Query(default=None, ge=1, le=100),
     db: Session = Depends(get_db),
+    _: User | None = Depends(require_admin_or_internal_api_key),
 ):
     extra_params = {}
     if seriesCd:
@@ -83,6 +88,7 @@ def collect_job_postings_legacy(
     use_mock: bool = Query(default=True),
     save_format: str = Query(default="json", pattern="^(json|csv)$"),
     db: Session = Depends(get_db),
+    _: User | None = Depends(require_admin_or_internal_api_key),
 ):
     source = "mock" if use_mock else "public_data"
     return _collect_jobs(

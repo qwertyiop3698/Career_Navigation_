@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from app.api.auth import get_current_user
+from app.api.security import require_admin_or_internal_api_key
 from app.db import get_db
+from app.models import User
 from app.schemas import (
     DocumentCreate,
     DocumentCreateResponse,
@@ -12,9 +15,15 @@ from app.schemas import (
 from app.services.rag_service import RagService
 
 router = APIRouter(prefix="/api/v1/rag", tags=["rag"])
+admin_router = APIRouter(prefix="/api/v1/admin/rag", tags=["admin-rag"])
 rag_service = RagService()
 
 
+@admin_router.post(
+    "/documents",
+    response_model=DocumentCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 @router.post(
     "/documents",
     response_model=DocumentCreateResponse,
@@ -23,6 +32,7 @@ rag_service = RagService()
 def create_document(
     payload: DocumentCreate,
     db: Session = Depends(get_db),
+    _: User | None = Depends(require_admin_or_internal_api_key),
 ):
     try:
         document = rag_service.create_document(
@@ -48,6 +58,7 @@ def create_document(
 def query_documents(
     payload: RagQueryRequest,
     db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
 ):
     results = rag_service.search_documents(
         db=db,
